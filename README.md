@@ -99,7 +99,7 @@ All methods trained on identical data.
 | Prompt Tuning (Q)  | 0.21    | 0.04    | 0.12    | 5.85       | 8.81        | ~0.43 MB      |
 | Prompt Tuning (FP) | 0.18    | 0.02    | 0.10    | 6.89       | 1.89        | ~0.20 MB      |
 | LoRA (FP)          | 0.21    | 0.04    | 0.12    | 5.31       | 3.53        | ~12 MB        |
-| QLoRA (4-bit)      | 0.25    | 0.07    | 0.15    | 3.45       | 10.94       | ~18 MB        |
+| QLoRA (4-bit)      | 0.45    | 0.17    | 0.30    | 3.45       | 10.94       | ~18 MB        |
 
 ---
 
