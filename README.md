@@ -11,6 +11,11 @@ In this project, we present **MEDIGUIDE**, a conversational AI chatbot fine-tune
 
 With the growing demand for quick medical advice, AI-powered chatbots have gained significant relevance. These systems offer immediate responses to general health queries and assist in triage, while clearly disclaiming that they are not substitutes for professional diagnosis.
 
+## Screenshots 
+
+![Screenshot 2025-06-23 132357](https://github.com/user-attachments/assets/3b4604cd-a054-499a-afae-8ff8e6b41148)
+![Screenshot 2025-06-23 132408](https://github.com/user-attachments/assets/e71f37a3-aa07-485a-8824-bafe7a23f7c0)
+
 ### Goals of the Project
 
 - Build a Falcon-7B-based chatbot that answers user medical queries.
