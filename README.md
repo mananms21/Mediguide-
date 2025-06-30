@@ -9,7 +9,6 @@
 
 *An AI-powered medical chatbot built with advanced fine-tuning techniques*
 
-[📺 Demo Video](https://drive.google.com/file/d/1-h_btasIkoq7TZpBmwGoKlfcLfSM9aFW/view?usp=drive_link) • [🤗 Models](#-model-links) • [📊 Dataset](#-dataset--preprocessing) • [🚀 Quick Start](#-quick-start)
 
 </div>
 
