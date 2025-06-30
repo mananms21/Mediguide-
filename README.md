@@ -37,14 +37,10 @@ With the exponential growth in demand for accessible medical advice, AI-powered 
 
 </div>
 
-<details>
-<summary>📸 Click to view screenshots</summary>
-
 ![MEDIGUIDE Interface 1](https://github.com/user-attachments/assets/3b4604cd-a054-499a-afae-8ff8e6b41148)
 
 ![MEDIGUIDE Interface 2](https://github.com/user-attachments/assets/e71f37a3-aa07-485a-8824-bafe7a23f7c0)
 
-</details>
 
 ---
 
