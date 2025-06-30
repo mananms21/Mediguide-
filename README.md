@@ -1,8 +1,6 @@
-# 🏥 MEDIGUIDE: Comparative Fine-Tuning for Medical Question Answering
-
+# 🏥 MEDIGUIDE:  Fine-Tuned Medical Chatbot
 <div align="center">
 
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://python.org)
 [![Hugging Face](https://img.shields.io/badge/🤗-Hugging%20Face-yellow)](https://huggingface.co)
 [![Kaggle](https://img.shields.io/badge/Kaggle-Dataset-blue)](https://www.kaggle.com/datasets/pythonafroz/medquad-medical-question-answer-for-ai-research)
