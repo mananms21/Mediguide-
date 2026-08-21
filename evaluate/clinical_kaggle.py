@@ -175,43 +175,79 @@ bertscore_r  = round(float(R.mean()), 4)
 bertscore_f1 = round(float(F1.mean()), 4)
 print(f"   P={bertscore_p}  R={bertscore_r}  F1={bertscore_f1}")
 
-# ── STEP 7: Clinical BERTScore (BiomedBERT) ───────────────────────────
-print("\n📐 [3/6] Clinical BERTScore (BiomedBERT — clinically aware)…")
+# ── STEP 7: Clinical BERTScore (BiomedBERT) — manual implementation ───
+# We bypass the bert_score library for BiomedBERT because bert_score's
+# internal tokenizer setup raises OverflowError on Kaggle's transformers
+# version (passes max_length=None → overflows Rust usize in fast tokenizer,
+# and use_fast_tokenizer=False is ignored by this build).
+#
+# Instead we implement token-level greedy matching directly — this IS
+# exactly what BERTScore computes: for each token in prediction, find
+# the most similar token in reference (cosine), average → Precision.
+# Reverse gives Recall. F1 is harmonic mean.
+print("\n📐 [3/6] Clinical BERTScore (BiomedBERT — manual greedy matching)…")
+
 BIOMEDBERT = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext"
 
-# BiomedBERT is BERT-base: max_position_embeddings = 512 (hard limit).
-# Character truncation is NOT safe — medical text tokenises at ~1.5 tokens/char.
-# A text of 2000 chars can be 933+ tokens → RuntimeError on position embeddings.
-# Fix: tokenise → truncate to 400 tokens → decode back to text.
-from transformers import AutoTokenizer as _AuxTok
-_bio_tok = _AuxTok.from_pretrained(BIOMEDBERT)
+from transformers import AutoTokenizer as _BioTok, AutoModel as _BioModel
+import torch.nn.functional as F
 
-def _tok_truncate(texts, tok, max_tokens=400):
-    out = []
-    for t in texts:
-        ids = tok.encode(t, add_special_tokens=False)
-        out.append(tok.decode(ids[:max_tokens], skip_special_tokens=True))
-    return out
+# Load with use_fast=False to avoid the tokenizer overflow bug entirely
+_bio_tok = _BioTok.from_pretrained(BIOMEDBERT, use_fast=False)
+_bio_mdl = _BioModel.from_pretrained(BIOMEDBERT).to(DEVICE).eval()
+print(f"   BiomedBERT loaded ({sum(p.numel() for p in _bio_mdl.parameters())/1e6:.0f}M params)")
 
-bio_preds = _tok_truncate(preds, _bio_tok)
-bio_refs  = _tok_truncate(refs,  _bio_tok)
-print(f"   Truncated to ≤400 BiomedBERT tokens per text")
+def _bio_embed(texts, max_length=400):
+    """Returns list of [seq_len, hidden_dim] tensors (no padding, no CLS/SEP)."""
+    embs = []
+    for text in texts:
+        enc = _bio_tok(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=max_length,
+            padding=False,
+        ).to(DEVICE)
+        with torch.no_grad():
+            out = _bio_mdl(**enc)
+        # Drop CLS (0) and SEP (-1), keep content token embeddings
+        token_embs = out.last_hidden_state[0, 1:-1, :]  # [L, H]
+        embs.append(token_embs)
+    return embs
 
-P_c, R_c, F1_c = generic_bs(
-    bio_preds, bio_refs,
-    model_type=BIOMEDBERT,
-    num_layers=12,             # BiomedBERT = BERT-base → 12 transformer layers
-    lang="en", verbose=True,
-    device=DEVICE,
-    rescale_with_baseline=False,
-    use_fast_tokenizer=False,  # fix OverflowError: fast (Rust) tokenizer overflows
-                               # when bert_score passes max_length=None internally
-)
-clinical_bertscore_p  = round(float(P_c.mean()), 4)
-clinical_bertscore_r  = round(float(R_c.mean()), 4)
-clinical_bertscore_f1 = round(float(F1_c.mean()), 4)
+def _clinical_bertscore(pred_texts, ref_texts):
+    """Compute BERTScore P, R, F1 using BiomedBERT greedy token matching."""
+    p_embs = _bio_embed(pred_texts)
+    r_embs = _bio_embed(ref_texts)
+    Ps, Rs, F1s = [], [], []
+    for pe, re in zip(p_embs, r_embs):
+        if pe.shape[0] == 0 or re.shape[0] == 0:
+            Ps.append(0.0); Rs.append(0.0); F1s.append(0.0)
+            continue
+        # Normalise to unit vectors
+        pe_n = F.normalize(pe, dim=-1)  # [Lp, H]
+        re_n = F.normalize(re, dim=-1)  # [Lr, H]
+        # Cosine similarity matrix [Lp × Lr]
+        sim = torch.mm(pe_n, re_n.T)
+        # Precision: each pred token greedily matched to best ref token
+        P = sim.max(dim=1).values.mean().item()
+        # Recall: each ref token greedily matched to best pred token
+        R = sim.max(dim=0).values.mean().item()
+        f1 = 2 * P * R / (P + R) if (P + R) > 0 else 0.0
+        Ps.append(P); Rs.append(R); F1s.append(f1)
+    return float(np.mean(Ps)), float(np.mean(Rs)), float(np.mean(F1s))
+
+print(f"   Computing greedy token matching for {len(preds)} pairs…")
+_cp, _cr, _cf1 = _clinical_bertscore(preds, refs)
+
+clinical_bertscore_p  = round(_cp,  4)
+clinical_bertscore_r  = round(_cr,  4)
+clinical_bertscore_f1 = round(_cf1, 4)
 print(f"   P={clinical_bertscore_p}  R={clinical_bertscore_r}  F1={clinical_bertscore_f1}")
 print(f"   Δ vs generic BERTScore: {clinical_bertscore_f1 - bertscore_f1:+.4f}")
+
+# Free BiomedBERT from GPU before next steps
+del _bio_mdl; torch.cuda.empty_cache()
 # ── STEP 8: Content-Word F1 (medical factual accuracy proxy) ──────────
 # scispacy consistently fails on Kaggle (tar.gz build requires numpy 2.x,
 # Kaggle has 1.26). We use Content-Word F1 instead — a well-validated
