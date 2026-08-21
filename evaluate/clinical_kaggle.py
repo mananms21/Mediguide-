@@ -204,6 +204,8 @@ P_c, R_c, F1_c = generic_bs(
     lang="en", verbose=True,
     device=DEVICE,
     rescale_with_baseline=False,
+    use_fast_tokenizer=False,  # fix OverflowError: fast (Rust) tokenizer overflows
+                               # when bert_score passes max_length=None internally
 )
 clinical_bertscore_p  = round(float(P_c.mean()), 4)
 clinical_bertscore_r  = round(float(R_c.mean()), 4)
