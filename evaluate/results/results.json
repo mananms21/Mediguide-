@@ -1,9 +1,9 @@
 {
-  "last_updated": "2026-08-20",
-  "note": "Existing models use original paper metrics. Run evaluate/evaluate.py --all on GPU to fill in BERTScore and update Phi-3 results after Kaggle training.",
+  "last_updated": "2026-08-21",
+  "note": "Clinical metrics (BiomedBERT, NER Entity F1, NLI, Hallucination) added. Run evaluate/clinical_kaggle.py on Kaggle T4 to populate Phi-3 clinical scores.",
   "models": [
     {
-      "name": "Phi-3 Mini QLoRA 🆕",
+      "name": "Phi-3 Mini QLoRA \ud83c\udd95",
       "model_id": "Shriyanshml/phi3-mini-qlora-mediguide",
       "base_model": "microsoft/Phi-3-mini-4k-instruct",
       "method": "QLoRA (4-bit NF4)",
@@ -21,7 +21,18 @@
       "train_loss_epoch3": 0.6857,
       "val_loss_epoch2": 0.6955,
       "val_loss_epoch3": 0.6895,
-      "note": "Kaggle T4, 3 epochs, 58.5 min. Full 50-sample BERTScore eval complete."
+      "note": "Run evaluate/clinical_kaggle.py on Kaggle T4 to populate clinical metrics.",
+      "perplexity": null,
+      "clinical_bertscore_p": null,
+      "clinical_bertscore_r": null,
+      "clinical_bertscore_f1": null,
+      "entity_precision": null,
+      "entity_recall": null,
+      "entity_f1": null,
+      "entailment_rate": null,
+      "neutral_rate": null,
+      "contradiction_rate": null,
+      "hallucination_rate": null
     },
     {
       "name": "Falcon-7B QLoRA",
@@ -38,7 +49,18 @@
       "bertscore_f1": null,
       "latency_s": 10.94,
       "eval_examples": 50,
-      "note": "Original baseline — BERTScore pending"
+      "note": "Original baseline \u2014 BERTScore pending",
+      "perplexity": null,
+      "clinical_bertscore_p": null,
+      "clinical_bertscore_r": null,
+      "clinical_bertscore_f1": null,
+      "entity_precision": null,
+      "entity_recall": null,
+      "entity_f1": null,
+      "entailment_rate": null,
+      "neutral_rate": null,
+      "contradiction_rate": null,
+      "hallucination_rate": null
     },
     {
       "name": "Falcon-7B LoRA",
@@ -55,7 +77,18 @@
       "bertscore_f1": null,
       "latency_s": 3.53,
       "eval_examples": 50,
-      "note": "Original baseline — BERTScore pending"
+      "note": "Original baseline \u2014 BERTScore pending",
+      "perplexity": null,
+      "clinical_bertscore_p": null,
+      "clinical_bertscore_r": null,
+      "clinical_bertscore_f1": null,
+      "entity_precision": null,
+      "entity_recall": null,
+      "entity_f1": null,
+      "entailment_rate": null,
+      "neutral_rate": null,
+      "contradiction_rate": null,
+      "hallucination_rate": null
     },
     {
       "name": "Prompt Tuning (Quantized)",
@@ -72,7 +105,18 @@
       "bertscore_f1": null,
       "latency_s": 8.81,
       "eval_examples": 50,
-      "note": "Original baseline — BERTScore pending"
+      "note": "Original baseline \u2014 BERTScore pending",
+      "perplexity": null,
+      "clinical_bertscore_p": null,
+      "clinical_bertscore_r": null,
+      "clinical_bertscore_f1": null,
+      "entity_precision": null,
+      "entity_recall": null,
+      "entity_f1": null,
+      "entailment_rate": null,
+      "neutral_rate": null,
+      "contradiction_rate": null,
+      "hallucination_rate": null
     },
     {
       "name": "Prompt Tuning (Full Precision)",
@@ -80,16 +124,27 @@
       "base_model": "tiiuae/falcon-1b",
       "method": "Prompt Tuning (BF16)",
       "train_examples": 200,
-      "adapter_size_mb": 0.20,
+      "adapter_size_mb": 0.2,
       "rouge1": 0.18,
       "rouge2": 0.02,
-      "rougeL": 0.10,
+      "rougeL": 0.1,
       "bertscore_p": null,
       "bertscore_r": null,
       "bertscore_f1": null,
       "latency_s": 1.89,
       "eval_examples": 50,
-      "note": "Original baseline — BERTScore pending"
+      "note": "Original baseline \u2014 BERTScore pending",
+      "perplexity": null,
+      "clinical_bertscore_p": null,
+      "clinical_bertscore_r": null,
+      "clinical_bertscore_f1": null,
+      "entity_precision": null,
+      "entity_recall": null,
+      "entity_f1": null,
+      "entailment_rate": null,
+      "neutral_rate": null,
+      "contradiction_rate": null,
+      "hallucination_rate": null
     }
   ]
 }
