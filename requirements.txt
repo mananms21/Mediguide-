@@ -1,7 +1,33 @@
-transformers>=4.40
-torch==2.7.1
-streamlit==1.46.0
-accelerate==1.8.1
-tiktoken==0.9.0
-peft==0.15.2
-bitsandbytes==0.46.0
+# Core ML
+transformers>=4.44.2
+torch>=2.0.0
+peft>=0.12.0
+trl>=0.11.4
+bitsandbytes>=0.43.3
+accelerate>=0.34.0
+datasets>=2.21.0
+
+# Inference
+sentencepiece
+protobuf
+
+# RAG
+sentence-transformers>=2.7.0
+faiss-cpu>=1.8.0
+
+# Evaluation
+rouge-score>=0.1.2
+bert-score>=0.3.13
+
+# App
+streamlit>=1.38.0
+gradio>=4.44.0
+
+# API
+fastapi>=0.115.0
+uvicorn>=0.30.0
+
+# Utilities
+pandas>=2.0.0
+numpy>=1.26.0
+huggingface_hub>=0.24.0

@@ -1,0 +1,14 @@
+{
+    "model": "Shriyanshml/phi3-mini-qlora-mediguide",
+    "base_model": "microsoft/Phi-3-mini-4k-instruct",
+    "method": "QLoRA (4-bit NF4)",
+    "train_examples": 2000,
+    "eval_examples": 50,
+    "rouge1": 0.1748,
+    "rouge2": 0.0308,
+    "rougeL": 0.0945,
+    "bertscore_p": 0.7949,
+    "bertscore_r": 0.815,
+    "bertscore_f1": 0.8044,
+    "latency_s": 9.95
+}
