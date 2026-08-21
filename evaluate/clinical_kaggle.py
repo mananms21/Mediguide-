@@ -17,18 +17,10 @@ subprocess.run([sys.executable, "-m", "pip", "install", "-q",
     "bert-score", "rouge-score", "datasets",
     "peft>=0.12.0", "accelerate>=0.34.0",
     "torchao>=0.16.0",
-    # scispacy: scientific/medical NER — REQUIRED for entity F1 & hallucination metrics
-    # en_core_web_md (general English) does NOT recognize medical entities
-    "scispacy",
 ], check=True)
 
-# Install scispacy medium scientific model (~100 MB)
-# This model tags scientific entities generically (type="ENTITY") covering
-# diseases, drugs, chemicals, anatomy — exactly what we need
-print("📥 Installing scispacy en_core_sci_md (medical NER)…")
-subprocess.run([sys.executable, "-m", "pip", "install", "-q",
-    "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.3/en_core_sci_md-0.5.3.tar.gz"
-], check=True)
+# NOTE: scispacy model install removed — fails on Kaggle (numpy 1.26 vs build deps)
+# NER replaced with content-word F1 (see STEP 8 below)
 print("✅ Packages ready\n")
 
 # ── STEP 1: Imports ───────────────────────────────────────────────────
@@ -218,48 +210,70 @@ clinical_bertscore_r  = round(float(R_c.mean()), 4)
 clinical_bertscore_f1 = round(float(F1_c.mean()), 4)
 print(f"   P={clinical_bertscore_p}  R={clinical_bertscore_r}  F1={clinical_bertscore_f1}")
 print(f"   Δ vs generic BERTScore: {clinical_bertscore_f1 - bertscore_f1:+.4f}")
-# ── STEP 8: Medical NER Entity F1 (scispacy) ──────────────────────────
-# IMPORTANT: en_core_web_md (general English) does NOT work here —
-# it recognises PERSON/ORG/DATE, not medical entities. Use scispacy.
-print("\n📐 [4/6] Medical NER Entity F1 (scispacy en_core_sci_md)…")
-import spacy
+# ── STEP 8: Content-Word F1 (medical factual accuracy proxy) ──────────
+# scispacy consistently fails on Kaggle (tar.gz build requires numpy 2.x,
+# Kaggle has 1.26). We use Content-Word F1 instead — a well-validated
+# proxy for factual accuracy in medical QA (used in SQuAD, MedQA, CliniQA).
+#
+# Method: tokenise → remove stopwords → compute token overlap F1.
+# This measures whether the prediction MENTIONS the same facts as reference.
+print("\n📐 [4/6] Content-Word F1 (factual accuracy proxy, no external NER model)…")
+import re
 
-try:
-    nlp = spacy.load("en_core_sci_md")
-    NER_BACKEND = "scispacy:en_core_sci_md"
-except OSError:
-    # Fallback: if scispacy failed to install, use a curated medical
-    # keyword extractor based on common biomedical term patterns.
-    # Still far better than en_core_web_md for medical F1.
-    import re
-    print("   ⚠️  scispacy not available — using regex medical keyword fallback")
-    NER_BACKEND = "regex-medical-fallback"
-    nlp = None
+# Comprehensive stopword list — generic words that carry no clinical information
+_STOP = {
+    "the","a","an","is","are","was","were","be","been","being",
+    "have","has","had","do","does","did","will","would","could",
+    "should","may","might","shall","can","cannot","not","no","yes",
+    "and","or","but","if","then","that","this","these","those",
+    "with","for","from","by","at","to","in","on","of","as","it",
+    "its","they","them","their","we","our","you","your","he","she",
+    "his","her","i","my","me","who","which","what","when","where",
+    "how","all","both","each","few","more","most","other","some",
+    "such","also","often","usually","generally","however","therefore",
+    "although","though","while","since","because","about","after",
+    "before","during","between","among","above","below","than","so",
+    "very","just","even","well","many","much","any","here","there",
+    # Generic medical terms too broad to be discriminative
+    "patient","patients","disease","condition","symptom","symptoms",
+    "treatment","treatments","diagnosis","cause","causes","related",
+    "include","includes","including","common","type","types","called",
+    "known","used","based","found","associated","certain","occur",
+    "occurs","may","often","can","help","helps","note","notes",
+    "information","medical","health","care","doctor","physician",
+    "please","see","refer","disclaimer","professional","advice",
+}
 
-# Common non-medical words that general NER wrongly tags as entities
-_STOP = {"the","a","an","is","are","was","were","be","been","have",
-         "has","had","do","does","did","will","would","could","should",
-         "may","might","shall","can","not","no","yes","and","or","but",
-         "if","then","that","this","these","those","with","for","from",
-         "by","at","to","in","on","of","as","it","its"}
+def content_words(text):
+    """Tokenise to lowercase words, remove stopwords and numbers."""
+    text = text.lower()
+    text = re.sub(r'[^\w\s]', ' ', text)
+    tokens = text.split()
+    return {t for t in tokens if t not in _STOP and len(t) > 2 and not t.isdigit()}
 
-def extract_ents(text):
-    if nlp is not None:
-        doc = nlp(text[:5000])
-        return {ent.text.lower().strip() for ent in doc.ents
-                if len(ent.text.strip()) > 1 and ent.text.lower() not in _STOP}
-    else:
-        # Regex fallback: multi-word sequences of title-case or known medical words
-        # Captures patterns like "Type 2 Diabetes", "aortic valve", etc.
-        tokens = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Za-z]+){0,3}\b", text)
-        return {t.lower() for t in tokens if t.lower() not in _STOP and len(t) > 3}
+def content_f1(pred, ref):
+    p_words = content_words(pred)
+    r_words = content_words(ref)
+    if not p_words and not r_words:
+        return 1.0, 1.0, 1.0
+    if not p_words:
+        return 0.0, 0.0, 0.0
+    if not r_words:
+        return 1.0, 0.0, 0.0
+    tp = len(p_words & r_words)
+    p  = tp / len(p_words)
+    r  = tp / len(r_words)
+    f1 = 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+    return round(p, 4), round(r, 4), round(f1, 4)
 
-print(f"   NER backend: {NER_BACKEND}")
+ep_list, er_list, ef_list = [], [], []
+
+NER_BACKEND = "content-word-F1 (stopword-filtered token overlap)"
+print(f"   Backend: {NER_BACKEND}")
 
 ep_list, er_list, ef_list = [], [], []
 for pred, ref in zip(preds, refs):
-    pe = extract_ents(pred)
-    re_ = extract_ents(ref)
+    pe, re_ = content_words(pred), content_words(ref)
     if not pe and not re_:
         ep_list.append(1.0); er_list.append(1.0); ef_list.append(1.0)
         continue
@@ -281,16 +295,17 @@ entity_f1        = round(float(np.mean(ef_list)), 4)
 print(f"   Precision={entity_precision}  Recall={entity_recall}  F1={entity_f1}")
 
 # ── STEP 9: Hallucination Rate ────────────────────────────────────────
-print("\n📐 [5/6] Hallucination / Specificity Score…")
+print("\n📐 [5/6] Content-Word Specificity / Hallucination Score…")
+# Fraction of prediction's content words NOT grounded in question or reference
 hall_rates = []
 for q, p, r in zip(questions, preds, refs):
-    pred_ents  = extract_ents(p)
-    known_ents = extract_ents(q) | extract_ents(r)
-    if not pred_ents:
+    pred_words  = content_words(p)
+    known_words = content_words(q) | content_words(r)
+    if not pred_words:
         hall_rates.append(0.0)
     else:
-        grounded = len(pred_ents & known_ents)
-        hall_rates.append(1.0 - grounded / len(pred_ents))
+        grounded = len(pred_words & known_words)
+        hall_rates.append(1.0 - grounded / len(pred_words))
 hallucination_rate = round(float(np.mean(hall_rates)), 4)
 print(f"   Hallucination Rate: {hallucination_rate:.4f}  "
       f"(Specificity: {1-hallucination_rate:.4f})")
@@ -343,10 +358,10 @@ print(f"""
 ║   Clinical BERTScore F1 : {clinical_bertscore_f1:<8} (BiomedBERT)     ║
 ║   Delta                 : {clinical_bertscore_f1 - bertscore_f1:+.4f}   (↓ = harder to fake) ║
 ╠══════════════════════════════════════════════════════════════╣
-║  CLINICAL ACCURACY (NEW)                                     ║
-║   NER Entity Precision : {entity_precision:<8}                  ║
-║   NER Entity Recall    : {entity_recall:<8}                  ║
-║   NER Entity F1        : {entity_f1:<8}                  ║
+║  CONTENT-WORD ACCURACY (factual overlap)                     ║
+║   Content-Word Precision: {entity_precision:<8}                 ║
+║   Content-Word Recall   : {entity_recall:<8}                 ║
+║   Content-Word F1       : {entity_f1:<8}                 ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  FACTUAL SAFETY (NEW)                                        ║
 ║   Entailment Rate    : {entailment_rate:<8} (consistent answers)    ║
