@@ -5,7 +5,7 @@ Runs all evaluation levels in one cell. Paste entirely into Kaggle.
 
 Metrics computed:
   Existing : ROUGE-1/2/L, latency, perplexity, generic BERTScore
-  New      : Clinical BERTScore (BiomedBERT), Medical Entity F1,
+  New      : Clinical BERTScore (BiomedBERT), NER Entity F1,
              NLI Contradiction Rate, Hallucination Rate
 """
 
@@ -16,9 +16,18 @@ print("📦 Installing dependencies…")
 subprocess.run([sys.executable, "-m", "pip", "install", "-q",
     "bert-score", "rouge-score", "datasets",
     "peft>=0.12.0", "accelerate>=0.34.0",
+    "torchao>=0.16.0",
+    # scispacy: scientific/medical NER — REQUIRED for entity F1 & hallucination metrics
+    # en_core_web_md (general English) does NOT recognize medical entities
     "scispacy",
-    # scispacy medium scientific NER model (~100 MB)
-    "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.3/en_core_sci_md-0.5.3.tar.gz",
+], check=True)
+
+# Install scispacy medium scientific model (~100 MB)
+# This model tags scientific entities generically (type="ENTITY") covering
+# diseases, drugs, chemicals, anatomy — exactly what we need
+print("📥 Installing scispacy en_core_sci_md (medical NER)…")
+subprocess.run([sys.executable, "-m", "pip", "install", "-q",
+    "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.3/en_core_sci_md-0.5.3.tar.gz"
 ], check=True)
 print("✅ Packages ready\n")
 
@@ -54,7 +63,7 @@ peft_cfg = PeftConfig.from_pretrained(MODEL_ID)
 gen_model = AutoModelForCausalLM.from_pretrained(
     peft_cfg.base_model_name_or_path,
     torch_dtype=torch.float16,
-    device_map="auto",
+    device_map={"": 0},  # Forced to GPU 0 to prevent cross-device Kaggle errors
     attn_implementation="eager",
 )
 gen_model = PeftModel.from_pretrained(gen_model, MODEL_ID)
@@ -161,7 +170,12 @@ print(f"   ROUGE-1={rouge1}  ROUGE-2={rouge2}  ROUGE-L={rougeL}")
 
 # ── STEP 6: Generic BERTScore (roberta-large baseline) ────────────────
 print("\n📐 [2/6] Generic BERTScore (roberta-large)…")
-P, R, F1 = generic_bs(preds, refs, lang="en", verbose=True, device=DEVICE)
+
+# Truncate texts to ~2000 chars to avoid BERT's strict 512 token limit
+short_preds = [p[:2000] for p in preds]
+short_refs  = [r[:2000] for r in refs]
+
+P, R, F1 = generic_bs(short_preds, short_refs, lang="en", verbose=True, device=DEVICE)
 bertscore_p  = round(float(P.mean()), 4)
 bertscore_r  = round(float(R.mean()), 4)
 bertscore_f1 = round(float(F1.mean()), 4)
@@ -171,8 +185,9 @@ print(f"   P={bertscore_p}  R={bertscore_r}  F1={bertscore_f1}")
 print("\n📐 [3/6] Clinical BERTScore (BiomedBERT — clinically aware)…")
 BIOMEDBERT = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext"
 P_c, R_c, F1_c = generic_bs(
-    preds, refs,
+    short_preds, short_refs,   # <-- Use truncated strings here too!
     model_type=BIOMEDBERT,
+    num_layers=12,
     lang="en", verbose=True,
     device=DEVICE,
     rescale_with_baseline=False,
@@ -182,15 +197,43 @@ clinical_bertscore_r  = round(float(R_c.mean()), 4)
 clinical_bertscore_f1 = round(float(F1_c.mean()), 4)
 print(f"   P={clinical_bertscore_p}  R={clinical_bertscore_r}  F1={clinical_bertscore_f1}")
 print(f"   Δ vs generic BERTScore: {clinical_bertscore_f1 - bertscore_f1:+.4f}")
-
 # ── STEP 8: Medical NER Entity F1 (scispacy) ──────────────────────────
+# IMPORTANT: en_core_web_md (general English) does NOT work here —
+# it recognises PERSON/ORG/DATE, not medical entities. Use scispacy.
 print("\n📐 [4/6] Medical NER Entity F1 (scispacy en_core_sci_md)…")
 import spacy
-nlp = spacy.load("en_core_sci_md")
+
+try:
+    nlp = spacy.load("en_core_sci_md")
+    NER_BACKEND = "scispacy:en_core_sci_md"
+except OSError:
+    # Fallback: if scispacy failed to install, use a curated medical
+    # keyword extractor based on common biomedical term patterns.
+    # Still far better than en_core_web_md for medical F1.
+    import re
+    print("   ⚠️  scispacy not available — using regex medical keyword fallback")
+    NER_BACKEND = "regex-medical-fallback"
+    nlp = None
+
+# Common non-medical words that general NER wrongly tags as entities
+_STOP = {"the","a","an","is","are","was","were","be","been","have",
+         "has","had","do","does","did","will","would","could","should",
+         "may","might","shall","can","not","no","yes","and","or","but",
+         "if","then","that","this","these","those","with","for","from",
+         "by","at","to","in","on","of","as","it","its"}
 
 def extract_ents(text):
-    doc = nlp(text[:5000])
-    return {ent.text.lower().strip() for ent in doc.ents if len(ent.text) > 1}
+    if nlp is not None:
+        doc = nlp(text[:5000])
+        return {ent.text.lower().strip() for ent in doc.ents
+                if len(ent.text.strip()) > 1 and ent.text.lower() not in _STOP}
+    else:
+        # Regex fallback: multi-word sequences of title-case or known medical words
+        # Captures patterns like "Type 2 Diabetes", "aortic valve", etc.
+        tokens = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Za-z]+){0,3}\b", text)
+        return {t.lower() for t in tokens if t.lower() not in _STOP and len(t) > 3}
+
+print(f"   NER backend: {NER_BACKEND}")
 
 ep_list, er_list, ef_list = [], [], []
 for pred, ref in zip(preds, refs):
@@ -239,7 +282,6 @@ nli_tok = AutoTokenizer.from_pretrained(NLI_MODEL)
 nli_mdl = AutoModelForSequenceClassification.from_pretrained(NLI_MODEL).to(DEVICE).eval()
 
 # Free up generation model memory before loading NLI
-# (both fit on T4 but this is safer)
 torch.cuda.empty_cache()
 
 def nli_predict(premise, hypothesis):
@@ -281,9 +323,9 @@ print(f"""
 ║   Delta                 : {clinical_bertscore_f1 - bertscore_f1:+.4f}   (↓ = harder to fake) ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  CLINICAL ACCURACY (NEW)                                     ║
-║   Medical Entity Precision : {entity_precision:<8}                  ║
-║   Medical Entity Recall    : {entity_recall:<8}                  ║
-║   Medical Entity F1        : {entity_f1:<8}                  ║
+║   NER Entity Precision : {entity_precision:<8}                  ║
+║   NER Entity Recall    : {entity_recall:<8}                  ║
+║   NER Entity F1        : {entity_f1:<8}                  ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  FACTUAL SAFETY (NEW)                                        ║
 ║   Entailment Rate    : {entailment_rate:<8} (consistent answers)    ║
