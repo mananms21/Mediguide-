@@ -172,6 +172,8 @@ print(f"   ROUGE-1={rouge1}  ROUGE-2={rouge2}  ROUGE-L={rougeL}")
 print("\n📐 [2/6] Generic BERTScore (roberta-large)…")
 
 # Truncate texts to ~2000 chars to avoid BERT's strict 512 token limit
+# Truncate by characters for generic roberta-large (also 512 tokens, but WordPiece
+# tokenizes more efficiently so 2000 chars is generally safe)
 short_preds = [p[:2000] for p in preds]
 short_refs  = [r[:2000] for r in refs]
 
@@ -184,10 +186,29 @@ print(f"   P={bertscore_p}  R={bertscore_r}  F1={bertscore_f1}")
 # ── STEP 7: Clinical BERTScore (BiomedBERT) ───────────────────────────
 print("\n📐 [3/6] Clinical BERTScore (BiomedBERT — clinically aware)…")
 BIOMEDBERT = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext"
+
+# BiomedBERT is BERT-base: max_position_embeddings = 512 (hard limit).
+# Character truncation is NOT safe — medical text tokenises at ~1.5 tokens/char.
+# A text of 2000 chars can be 933+ tokens → RuntimeError on position embeddings.
+# Fix: tokenise → truncate to 400 tokens → decode back to text.
+from transformers import AutoTokenizer as _AuxTok
+_bio_tok = _AuxTok.from_pretrained(BIOMEDBERT)
+
+def _tok_truncate(texts, tok, max_tokens=400):
+    out = []
+    for t in texts:
+        ids = tok.encode(t, add_special_tokens=False)
+        out.append(tok.decode(ids[:max_tokens], skip_special_tokens=True))
+    return out
+
+bio_preds = _tok_truncate(preds, _bio_tok)
+bio_refs  = _tok_truncate(refs,  _bio_tok)
+print(f"   Truncated to ≤400 BiomedBERT tokens per text")
+
 P_c, R_c, F1_c = generic_bs(
-    short_preds, short_refs,   # <-- Use truncated strings here too!
+    bio_preds, bio_refs,
     model_type=BIOMEDBERT,
-    num_layers=12,
+    num_layers=12,             # BiomedBERT = BERT-base → 12 transformer layers
     lang="en", verbose=True,
     device=DEVICE,
     rescale_with_baseline=False,
