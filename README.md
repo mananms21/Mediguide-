@@ -14,7 +14,7 @@ MEDIGUIDE demonstrates a complete, production-style pipeline for building a medi
 
 - **Fine-tuning** — QLoRA adaptation of Microsoft Phi-3 Mini (3.8B) on 2,000 MedQuAD examples
 - **RAG** — FAISS retrieval over 14,782 NIH MedQuAD question-answer pairs with `all-MiniLM-L6-v2` embeddings
-- **Clinical evaluation** — a 4-level framework addressing the limitation that generic BERTScore cannot distinguish clinically different but semantically similar terms
+- **Clinical evaluation** — a 5-level framework with a full ablation study (zero-shot / fine-tuned / +RAG / OOD) addressing the limitation that generic BERTScore cannot distinguish clinically different but semantically similar terms
 - **Deployment** — Streamlit chat application with RAG toggle, and HF Spaces configuration
 
 ---
@@ -26,7 +26,7 @@ Mediguide/
 ├── app/                        # Streamlit chat application
 │   ├── app.py                  # Main chat UI with RAG toggle and model loading
 │   └── pages/
-│       └── Evaluation.py       # Interactive metrics dashboard
+│       └── Evaluation.py       # Ablation dashboard (4 conditions × 5 metrics)
 │
 ├── training/                   # Training scripts (all GPU experiments)
 │   ├── train_qlora_phi3.py     # ★ Primary: Phi-3 Mini QLoRA (Kaggle T4)
@@ -39,11 +39,13 @@ Mediguide/
 │   └── retriever.py            # MedRAGRetriever class (lazy-loaded)
 │
 ├── evaluate/                   # Evaluation framework
-│   ├── clinical_eval.py        # Reusable 4-level clinical evaluation module
-│   ├── clinical_kaggle.py      # ★ Complete Kaggle eval script (paste-and-run)
+│   ├── clinical_eval.py        # Reusable 5-level clinical evaluation module
+│   ├── ablation_kaggle.py      # ★ Comprehensive ablation (4 conditions, paste-and-run)
+│   ├── clinical_kaggle.py      # Legacy single-model eval script
 │   ├── evaluate.py             # General evaluation utilities
 │   └── results/
-│       └── results.json        # All model results (updated after each run)
+│       ├── results.json        # All model + ablation results
+│       └── ablation_results.json  # Raw ablation output from Kaggle
 │
 ├── spaces/                     # Hugging Face Spaces deployment
 │   ├── app.py                  # Gradio interface
@@ -51,15 +53,9 @@ Mediguide/
 │   └── README.md               # HF Spaces metadata card
 │
 ├── docs/                       # Supporting documents
-│   ├── Mediguide report.pdf    # Original project report
+│   ├── TECHNICAL_DOCUMENTATION.md  # Full technical reference (11 sections)
 │   ├── bertscore_kaggle.py     # Archived: first BERTScore-only eval script
 │   └── bertscore_local.py      # Archived: local BERTScore attempt
-│
-├── notebooks/                  # Archived Jupyter experiments (for reference)
-│   ├── final_qlora_mediguide.ipynb
-│   ├── final lora mediguide.ipynb
-│   ├── final_prompt_mediguide.ipynb
-│   └── final fp prompt mediguide.ipynb
 │
 ├── requirements.txt            # Full dependency list
 ├── .gitignore
@@ -196,15 +192,17 @@ results = run_all_clinical_metrics(
 
 ## Comparison with Baselines
 
-| Model | Method | Train examples | BERTScore F1 | ROUGE-1 | Latency |
-|---|---|---|---|---|---|
-| **Phi-3 Mini QLoRA** ★ | QLoRA 4-bit | 2,000 | **0.8042** | 0.1852 | 7.24 s |
-| Falcon-7B QLoRA | QLoRA 4-bit | 200 | — | 0.25 | 10.94 s |
-| Falcon-7B LoRA | LoRA BF16 | 200 | — | 0.21 | 3.53 s |
-| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | — | 0.21 | 8.81 s |
-| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | — | 0.18 | 1.89 s |
+| Model | Method | Train Ex. | ROUGE-1 | ROUGE-1@50tok | Clin. BERTScore | Latency |
+|---|---|---|---|---|---|---|
+| **Phi-3 Mini QLoRA + RAG** ★ | QLoRA + FAISS | 2,000 | **0.753** | **0.410** | **0.974** | 11.75 s |
+| **Phi-3 Mini QLoRA** | QLoRA 4-bit | 2,000 | 0.436 | 0.290 | 0.940 | 11.33 s |
+| Phi-3 Mini (zero-shot) | Base model | 0 | 0.315 | 0.195 | 0.920 | 13.74 s |
+| Falcon-7B QLoRA | QLoRA 4-bit | 200 | 0.250 | — | — | 10.94 s |
+| Falcon-7B LoRA | LoRA BF16 | 200 | 0.210 | — | — | 3.53 s |
+| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | 0.210 | — | — | 8.81 s |
+| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | 0.180 | — | — | 1.89 s |
 
-The Phi-3 Mini QLoRA model was trained on 10× more data and achieves a **Clinical BERTScore F1 of 0.9012** — the most clinically meaningful metric.
+Falcon baselines have higher full-prediction ROUGE-1 because they generate shorter, more reference-copying answers (only 200 training examples). Phi-3's lower full ROUGE reflects richer, more elaborate answers — which is desirable for a medical assistant. ROUGE-1 @50tok (verbosity-corrected) shows Phi-3's true factual precision advantage.
 
 ---
 
@@ -218,10 +216,10 @@ python training/train_qlora_phi3.py
 ```
 
 Key training decisions:
-- **4-bit NF4 quantisation** reduces the base model from ~14 GB (fp16) to ~4 GB
-- **Rank 8 LoRA** on `q_proj` and `v_proj` only — minimal parameters, maximum efficiency
-- **Gradient checkpointing** trades compute for memory, enabling batch size 2 on a T4
-- **`eager` attention** used instead of `flash_attention_2` for compatibility
+- **4-bit NF4 quantisation** reduces the base model from ~7.6 GB (fp16) to ~2.5 GB
+- **Rank 8 LoRA** on `qkv_proj` — Phi-3 fuses Q, K, V into a single projection
+- **Gradient checkpointing** trades compute for memory, enabling batch size 1 + accumulation on a T4
+- **`eager` attention** used instead of `flash_attention_2` for T4 compatibility (Turing, compute cap 7.5)
 
 ---
 
@@ -259,7 +257,7 @@ See [`requirements.txt`](requirements.txt) for the full list. Key packages:
 - This system is trained on NIH MedQuAD and is intended for **educational and research purposes only**
 - It is **not a substitute for professional medical advice**, diagnosis, or treatment
 - The model may generate plausible-sounding but incorrect medical information (hallucinations)
-- Clinical evaluation (NLI contradiction rate 12.5%) shows the model is borderline safe but not validated for clinical deployment
+- Clinical evaluation shows fine-tuned + RAG achieves NLI contradiction rate of 7.8% (safe threshold: <10%); fine-tuned alone is 21.7% — RAG is required for safe operation
 - Always consult a qualified healthcare professional for medical decisions
 
 ---
