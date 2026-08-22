@@ -436,13 +436,12 @@ if st.session_state.current_model != selected_model:
     st.session_state.current_model = selected_model
 
 
-# ── Load model ────────────────────────────────────────────────────
-with st.spinner("Loading model…"):
-    model, tokenizer, load_err = load_model(selected_model)
+# ── Retriever (lightweight FAISS index — load eagerly, ~1-2s) ─────
 retriever, rag_err = load_retriever()
+rag_ready = retriever is not None and getattr(retriever, "is_available", False)
 
-model_ready = load_err is None
-rag_ready   = retriever is not None and getattr(retriever, "is_available", False)
+# Model is NOT loaded here — it loads lazily on the first Send click.
+# This keeps the page fully responsive at startup.
 
 
 # ── Top bar ───────────────────────────────────────────────────────
@@ -460,16 +459,14 @@ st.markdown("""
 
 
 # ── Status row ────────────────────────────────────────────────────
-model_dot  = "dot-green" if model_ready else "dot-amber"
-model_txt  = "Model loaded" if model_ready else "Model unavailable"
-rag_dot    = "dot-blue" if rag_ready else "dot-gray"
-rag_txt    = f"RAG · {retriever.num_documents:,} passages" if rag_ready else "RAG index not found"
-mode_txt   = "RAG enabled" if (use_rag and rag_ready) else "Direct generation"
-mode_dot   = "dot-blue" if (use_rag and rag_ready) else "dot-gray"
+rag_dot  = "dot-blue" if rag_ready else "dot-gray"
+rag_txt  = f"RAG · {retriever.num_documents:,} passages" if rag_ready else "RAG index not found"
+mode_txt = "RAG enabled" if (use_rag and rag_ready) else "Direct generation"
+mode_dot = "dot-blue" if (use_rag and rag_ready) else "dot-gray"
 
 st.markdown(f"""
 <div class="status-row">
-  <div class="status-pill"><div class="status-dot {model_dot}"></div>{model_txt}</div>
+  <div class="status-pill"><div class="status-dot dot-gray"></div>Model: loads on first message</div>
   <div class="status-pill"><div class="status-dot {rag_dot}"></div>{rag_txt}</div>
   <div class="status-pill"><div class="status-dot {mode_dot}"></div>{mode_txt}</div>
 </div>
@@ -538,31 +535,36 @@ with st.form("chat_form", clear_on_submit=True):
         st.form_submit_button("Clear", use_container_width=True)
 
 if submitted and user_input.strip():
-    if not model_ready:
-        st.error("Model is not available. Check your HF credentials and network connection.")
-    else:
-        question = user_input.strip()
-        st.session_state.messages.append({"role": "user", "content": question})
+    question = user_input.strip()
+    st.session_state.messages.append({"role": "user", "content": question})
 
-        context = ""
-        if use_rag and rag_ready:
-            context = retriever.format_context(question, top_k)
+    # Load model on demand — cached after first call, so subsequent messages are instant
+    with st.spinner("Loading model… (first message only — this takes ~1 min)"):
+        model, tokenizer, load_err = load_model(selected_model)
 
-        prompt = build_prompt(question, meta["type"], context)
+    if load_err or model is None:
+        st.error(f"Could not load model: {load_err}\n\nCheck your network connection and HuggingFace credentials.")
+        st.stop()
 
-        with st.spinner("Generating response…"):
-            t0       = time.time()
-            response = generate(model, tokenizer, prompt, max_tokens, temperature, top_p)
-            latency  = time.time() - t0
+    context = ""
+    if use_rag and rag_ready:
+        context = retriever.format_context(question, top_k)
 
-        st.session_state.messages.append({
-            "role":    "bot",
-            "content": response,
-            "context": context,
-            "latency": f"{latency:.1f}s",
-            "model":   selected_model,
-        })
-        st.rerun()
+    prompt = build_prompt(question, meta["type"], context)
+
+    with st.spinner("Generating response…"):
+        t0       = time.time()
+        response = generate(model, tokenizer, prompt, max_tokens, temperature, top_p)
+        latency  = time.time() - t0
+
+    st.session_state.messages.append({
+        "role":    "bot",
+        "content": response,
+        "context": context,
+        "latency": f"{latency:.1f}s",
+        "model":   selected_model,
+    })
+    st.rerun()
 
 
 # ── Example questions ─────────────────────────────────────────────
