@@ -51,11 +51,11 @@ NIH MedQuAD (14,782 QA pairs)
 At inference time, a user question is:
 1. Embedded and used to retrieve the top-3 most relevant MedQuAD passages (RAG)
 2. Passed to the fine-tuned Phi-3 adapter along with the retrieved context
-3. Evaluated against the ground-truth reference using a 4-level clinical framework
+3. Evaluated against the ground-truth reference using a 5-level clinical framework across 4 ablation conditions
 
 ### What Is New
 
-The project's primary technical contribution is the **4-level clinical evaluation framework** that replaces generic BERTScore with a hierarchy of metrics that can detect the difference between semantically similar but clinically opposite answers (e.g., "increases" vs. "decreases" blood pressure).
+The project's primary technical contributions are the **comprehensive ablation study** (zero-shot vs. fine-tuned vs. +RAG vs. OOD) and the **5-level clinical evaluation framework** that replaces generic BERTScore with a hierarchy of metrics that can detect the difference between semantically similar but clinically opposite answers (e.g., "increases" vs. "decreases" blood pressure), while also correcting for the verbosity problem via ROUGE@50tok and Lexical Precision@50.
 
 ---
 
@@ -95,9 +95,10 @@ The project's primary technical contribution is the **4-level clinical evaluatio
 │  │   Clinical Evaluation (evaluate/)           │        │
 │  │                                             │        │
 │  │  L1: Clinical BERTScore (BiomedBERT)        │        │
-│  │  L2: Content-Word F1                        │        │
-│  │  L3: NLI Contradiction (roberta-large-mnli) │        │
-│  │  L4: Content-Word Hallucination             │        │
+│  │  L2: ROUGE-1 @50tok (verbosity-corrected)   │        │
+│  │  L3: Lexical Precision@50                   │        │
+│  │  L4: NLI Contradiction (roberta-large-mnli) │        │
+│  │  L5: OOD Score (PubMedQA benchmark)         │        │
 │  └─────────────────────────────────────────────┘        │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -566,17 +567,18 @@ The toggle is useful for ablation: comparing answers with and without RAG shows 
 
 ### Evaluation Dashboard (`app/pages/Evaluation.py`)
 
-A dark-themed Streamlit page with four metric sections:
+A dark-themed Streamlit dashboard with five sections:
 
-1. **Classical Metrics** — ROUGE-1/2/L, Perplexity, Latency displayed as metric cards
-2. **Semantic Similarity** — Generic vs. Clinical BERTScore with delta highlighting
-3. **Clinical Accuracy** — Content-Word Precision/Recall/F1
-4. **Factual Safety** — NLI rates with a live safety verdict:
+1. **Key Findings** — Four delta badges (Fine-tuning Δ, RAG Δ, OOD gap, Contradiction reduction)
+2. **Ablation Comparison Table** — 4 conditions × 8 metrics with best-value highlighting per row
+3. **Semantic Quality** — Generic vs. Clinical BERTScore with delta card
+4. **Classical Metrics** — ROUGE-1 (full + @50tok), perplexity, latency
+5. **Clinical Safety** — NLI entailment / neutral / contradiction with live safety verdict:
    - Contradiction < 10%: ✅ Clinically Safe
    - Contradiction 10–15%: ⚠️ Borderline — review needed
    - Contradiction > 15%: 🚨 Caution — clinical review required
 
-All data is loaded from `evaluate/results/results.json`. The dashboard updates automatically when new eval results are written to that file.
+All data is loaded from `evaluate/results/results.json`. The ablation table populates automatically once `ablation_conditions` is filled by running `evaluate/ablation_kaggle.py`.
 
 ---
 
@@ -621,9 +623,9 @@ Several fixes were required for the Kaggle environment:
 
 ### Known Limitations
 
-1. **NLI model domain mismatch:** `roberta-large-mnli` was trained on Wikipedia/books. Medical text has different syntactic patterns. The contradiction rate (12.48%) should be treated as an upper bound, not a precise measurement.
+1. **NLI model domain mismatch:** `roberta-large-mnli` was trained on Wikipedia/books, not clinical text. The ablation reveals this concretely: fine-tuning *increases* contradiction (0.1007 → 0.2173) not because the model becomes less safe, but because it produces more verbose domain-specific text that the Wikipedia NLI model misclassifies. RAG resolves this to 0.0780. Contradiction rates should be interpreted relative to conditions, not as absolute values.
 
-2. **Verbosity suppresses overlap metrics:** All ROUGE and content-word metrics are suppressed because the model generates more content than the NIH reference. This is actually desirable behaviour (more informative answers) but makes metrics look low.
+2. **Verbosity suppresses overlap metrics on full predictions:** ROUGE-1 on full predictions is suppressed because the model generates more content than the NIH reference. Use ROUGE-1 @50tok (reported in the ablation: 0.195 → 0.290 → 0.410) for a verbosity-corrected comparison.
 
 3. **50-sample evaluation:** Clinical evaluation runs on 50 samples due to GPU time limits. Results have a confidence interval of approximately ±0.03 on BERTScore (rough estimate from sampling variance). Running on 500 samples would give more stable estimates.
 
@@ -654,14 +656,20 @@ Several fixes were required for the Kaggle environment:
 3. Output: Shriyanshml/mediguide-rag-index on HF Hub (FAISS index + metadata)
 ```
 
-### Step 3: Run the clinical evaluation (Kaggle T4, ~15 min)
+### Step 3: Run the comprehensive ablation evaluation (Kaggle T4, ~50 min)
 
 ```
 1. Same Kaggle environment
-2. Paste evaluate/clinical_kaggle.py into a new cell
-3. Output: phi3_results.json pushed to Shriyanshml/mediguide-rag-index
-4. Copy the JSON into evaluate/results/results.json locally
+2. Paste evaluate/ablation_kaggle.py into a new cell
+3. Script runs 4 conditions × 5 metrics automatically
+4. Output: ablation_results.json pushed to Shriyanshml/mediguide-rag-index
+5. Download it and copy into evaluate/results/ablation_results.json locally
+6. The results.json will auto-merge via the local script:
+   python3 -c "import json; ..."
+   (see evaluate/ablation_kaggle.py footer for merge instructions)
 ```
+
+> For the original single-model evaluation only, `evaluate/clinical_kaggle.py` is still available.
 
 ### Step 4: Run the application locally
 
