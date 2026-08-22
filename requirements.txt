@@ -1,4 +1,4 @@
-# Core ML
+# ── Core ML ────────────────────────────────────────────────────────────
 transformers>=4.44.2
 torch>=2.0.0
 peft>=0.12.0
@@ -7,27 +7,26 @@ bitsandbytes>=0.43.3
 accelerate>=0.34.0
 datasets>=2.21.0
 
-# Inference
+# ── Inference ──────────────────────────────────────────────────────────
 sentencepiece
 protobuf
 
-# RAG
+# ── RAG ────────────────────────────────────────────────────────────────
 sentence-transformers>=2.7.0
 faiss-cpu>=1.8.0
 
-# Evaluation
+# ── Evaluation ─────────────────────────────────────────────────────────
 rouge-score>=0.1.2
 bert-score>=0.3.13
+# Note: scispacy (en_core_sci_md) fails on Kaggle due to numpy conflicts.
+# Clinical evaluation uses content-word F1 and manual BiomedBERT scoring.
+# For local scispacy use: pip install scispacy && pip install <model_url>
 
-# App
+# ── App / UI ────────────────────────────────────────────────────────────
 streamlit>=1.38.0
 gradio>=4.44.0
 
-# API
-fastapi>=0.115.0
-uvicorn>=0.30.0
-
-# Utilities
+# ── Utilities ──────────────────────────────────────────────────────────
 pandas>=2.0.0
 numpy>=1.26.0
 huggingface_hub>=0.24.0

@@ -1,356 +1,279 @@
-# 🏥 MEDIGUIDE:  Fine-Tuned Medical Chatbot
-<div align="center">
+# MEDIGUIDE 🩺
 
-[![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://python.org)
-[![Hugging Face](https://img.shields.io/badge/🤗-Hugging%20Face-yellow)](https://huggingface.co)
-[![Kaggle](https://img.shields.io/badge/Kaggle-Dataset-blue)](https://www.kaggle.com/datasets/pythonafroz/medquad-medical-question-answer-for-ai-research)
+**A domain-adapted medical question-answering system built on Phi-3 Mini, fine-tuned with QLoRA and augmented with Retrieval-Augmented Generation (RAG) over NIH MedQuAD.**
 
-*An AI-powered medical chatbot built with advanced fine-tuning techniques*
-
-
-</div>
+[![Model](https://img.shields.io/badge/🤗%20Model-Shriyanshml%2Fphi3--mini--qlora--mediguide-blue)](https://huggingface.co/Shriyanshml/phi3-mini-qlora-mediguide)
+[![RAG Index](https://img.shields.io/badge/🤗%20Dataset-Shriyanshml%2Fmediguide--rag--index-green)](https://huggingface.co/datasets/Shriyanshml/mediguide-rag-index)
+[![GitHub](https://img.shields.io/badge/GitHub-mananms21%2FMediguide-black)](https://github.com/mananms21/Mediguide-)
 
 ---
 
-## 📖 Abstract
+## Overview
 
-**MEDIGUIDE** is a conversational AI chatbot fine-tuned to provide accurate, medically grounded responses to patient queries. We experiment with three cutting-edge fine-tuning strategies on the Falcon-7B model: **Prompt Tuning**, **LoRA**, and **QLoRA**. Using a curated subset of the MedQuAD dataset, we comprehensively evaluate each method using ROUGE, Perplexity (PPL), latency, and model size metrics. Our results reveal crucial trade-offs between quality, speed, and resource efficiency, culminating in evidence-based deployment recommendations for real-world medical chatbot scenarios.
+MEDIGUIDE demonstrates a complete, production-style pipeline for building a medical AI assistant using only free-tier compute (Kaggle T4 GPU, Hugging Face Hub). The project covers:
 
----
-
-## 🎯 Introduction
-
-With the exponential growth in demand for accessible medical advice, AI-powered chatbots have emerged as a transformative solution in healthcare technology. These intelligent systems provide:
-
-- 🔍 **Immediate responses** to general health queries
-- 🏥 **Triage assistance** for healthcare providers
-- ⚠️ **Clear disclaimers** emphasizing they're not substitutes for professional diagnosis
-- 🌐 **24/7 availability** for basic medical information
+- **Fine-tuning** — QLoRA adaptation of Microsoft Phi-3 Mini (3.8B) on 2,000 MedQuAD examples
+- **RAG** — FAISS retrieval over 14,782 NIH MedQuAD question-answer pairs with `all-MiniLM-L6-v2` embeddings
+- **Clinical evaluation** — a 4-level framework addressing the limitation that generic BERTScore cannot distinguish clinically different but semantically similar terms
+- **Deployment** — Streamlit chat application with RAG toggle, and HF Spaces configuration
 
 ---
 
-## 🖼️ Screenshots & Demo
+## Repository Structure
 
-<div align="center">
-
-### 📺 [**Watch Full Demo Video**](https://drive.google.com/file/d/1-h_btasIkoq7TZpBmwGoKlfcLfSM9aFW/view?usp=drive_link)
-
-</div>
-
-![MEDIGUIDE Interface 1](https://github.com/user-attachments/assets/3b4604cd-a054-499a-afae-8ff8e6b41148)
-
-![MEDIGUIDE Interface 2](https://github.com/user-attachments/assets/e71f37a3-aa07-485a-8824-bafe7a23f7c0)
-
+```
+Mediguide/
+├── app/                        # Streamlit chat application
+│   ├── app.py                  # Main chat UI with RAG toggle and model loading
+│   └── pages/
+│       └── Evaluation.py       # Interactive metrics dashboard
+│
+├── training/                   # Training scripts (all GPU experiments)
+│   ├── train_qlora_phi3.py     # ★ Primary: Phi-3 Mini QLoRA (Kaggle T4)
+│   ├── train_lora_falcon.py    # Baseline: Falcon-7B LoRA (BF16)
+│   └── train_prompt_tuning_falcon.py  # Baseline: Falcon-7B Prompt Tuning
+│
+├── rag/                        # Retrieval-Augmented Generation module
+│   ├── __init__.py
+│   ├── build_index.py          # Build FAISS index from MedQuAD dataset
+│   └── retriever.py            # MedRAGRetriever class (lazy-loaded)
+│
+├── evaluate/                   # Evaluation framework
+│   ├── clinical_eval.py        # Reusable 4-level clinical evaluation module
+│   ├── clinical_kaggle.py      # ★ Complete Kaggle eval script (paste-and-run)
+│   ├── evaluate.py             # General evaluation utilities
+│   └── results/
+│       └── results.json        # All model results (updated after each run)
+│
+├── spaces/                     # Hugging Face Spaces deployment
+│   ├── app.py                  # Gradio interface
+│   ├── requirements.txt
+│   └── README.md               # HF Spaces metadata card
+│
+├── docs/                       # Supporting documents
+│   ├── Mediguide report.pdf    # Original project report
+│   ├── bertscore_kaggle.py     # Archived: first BERTScore-only eval script
+│   └── bertscore_local.py      # Archived: local BERTScore attempt
+│
+├── notebooks/                  # Archived Jupyter experiments (for reference)
+│   ├── final_qlora_mediguide.ipynb
+│   ├── final lora mediguide.ipynb
+│   ├── final_prompt_mediguide.ipynb
+│   └── final fp prompt mediguide.ipynb
+│
+├── requirements.txt            # Full dependency list
+├── .gitignore
+└── README.md
+```
 
 ---
 
-## 🎯 Project Goals
+## Quickstart
 
-<div align="center">
+### 1. Install dependencies
 
-| 🎯 **Objective** | 📋 **Description** |
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Run the chat application locally
+
+```bash
+streamlit run app/app.py
+```
+
+The app auto-detects your device (CUDA → MPS → CPU) and loads the model accordingly. On Apple Silicon Macs it uses MPS in `float16`; on CPU it uses `float32`.
+
+### 3. Build the RAG index (first run only)
+
+The index is auto-downloaded from HF Hub on first use. To rebuild locally:
+
+```bash
+python rag/build_index.py
+```
+
+---
+
+## Model Details
+
+| | |
 |---|---|
-| 🤖 **AI Development** | Build a Falcon-7B-based chatbot for medical query responses |
-| 🏥 **Clinical Standards** | Ensure clinical tone, accuracy, and comprehensive safety disclaimers |
-| 🔬 **Method Comparison** | Fine-tune using Prompt Tuning, LoRA, and QLoRA techniques |
-| 📊 **Performance Analysis** | Compare methods on quality, efficiency, and deployability metrics |
+| **Base model** | `microsoft/Phi-3-mini-4k-instruct` (3.8B parameters) |
+| **Adapter** | `Shriyanshml/phi3-mini-qlora-mediguide` |
+| **Method** | QLoRA — 4-bit NF4 quantisation + LoRA rank 8 on attention layers |
+| **Training data** | 2,000 samples from `keivalya/MedQuad-MedicalQnADataset` (NIH source) |
+| **Training hardware** | Kaggle T4 (15 GB VRAM) |
+| **Training time** | ~58.5 minutes, 3 epochs |
+| **Adapter size** | 12.6 MB |
+| **Trainable parameters** | 3,145,728 (0.08% of total) |
 
-</div>
+### System prompt
+
+```
+You are MEDIGUIDE, a knowledgeable medical assistant trained on authoritative
+NIH sources. Provide accurate, evidence-based answers to medical questions in
+a clear, empathetic tone. Always end your response with a brief disclaimer
+that this is not a substitute for professional medical advice.
+```
 
 ---
 
-## 📊 Dataset & Preprocessing
+## RAG Pipeline
 
-### 🗂️ Dataset Overview
+The retriever indexes the full 14,782-sample MedQuAD corpus using `sentence-transformers/all-MiniLM-L6-v2` embeddings stored in a FAISS flat-L2 index.
 
-Our foundation is the **MedQuAD** (Medical Question Answering Dataset) - a meticulously curated collection sourced from 12 trusted **NIH** websites including:
+At inference time:
+1. The user's question is embedded
+2. Top-3 most similar MedQuAD passages are retrieved
+3. Retrieved context is prepended to the prompt before generation
 
-- 🎗️ **cancer.gov** - Cancer-related queries
-- 🧬 **GARD** - Genetic and Rare Diseases
-- 🏥 **NIH Clinical Center** - General medical information
-- *...and 9 other authoritative sources*
+The RAG index is hosted at [`Shriyanshml/mediguide-rag-index`](https://huggingface.co/datasets/Shriyanshml/mediguide-rag-index) and downloaded automatically on first use.
 
-**🔒 Privacy Compliance**: HIPAA-equivalent standards rigorously enforced
+---
 
-### 📋 Data Structure
+## Evaluation
 
-```json
-{
-  "question": "What are the symptoms of diabetes?",
-  "answer": "Expert-written clinical response...",
-  "source": "Source website identifier",
-  "focus_area": "Endocrinology"
+### Results Summary
+
+| Metric | Value | Notes |
+|---|---|---|
+| **Clinical BERTScore F1** | **0.9012** | BiomedBERT (PubMed-trained) greedy token matching |
+| Generic BERTScore F1 | 0.8042 | roberta-large baseline |
+| Δ Clinical − Generic | +0.0970 | Model uses domain-specific clinical vocabulary |
+| Perplexity | **2.57** | Model is confident in its outputs |
+| ROUGE-1 | 0.1852 | Suppressed by verbosity (see note below) |
+| ROUGE-2 | 0.0255 | |
+| ROUGE-L | 0.0952 | |
+| Content-Word F1 | 0.127 | Stopword-filtered token overlap |
+| NLI Entailment Rate | 0.1595 | Fraction of responses consistent with reference |
+| NLI Contradiction Rate | 0.1248 | Clinical danger metric (borderline) |
+| Avg latency | 7.24 s | Per response on Kaggle T4 |
+
+> **Note on ROUGE and Content-Word F1:** These scores appear low because the model generates verbose, explanatory answers (e.g., 150 tokens) while MedQuAD references are often concise (e.g., 15 tokens). The low scores reflect this verbosity gap, not factual inaccuracy. Clinical BERTScore and perplexity are the more meaningful signals.
+
+### Why Generic BERTScore Is Not Enough
+
+A core contribution of this project is demonstrating that generic BERTScore (using `roberta-large` trained on Wikipedia) cannot distinguish clinically different but semantically similar terms. In Wikipedia's embedding space, "heart" and "lung" are neighbours because they co-occur in similar contexts.
+
+**The 4-level clinical evaluation framework:**
+
+| Level | Metric | What it catches |
+|---|---|---|
+| 1 | Clinical BERTScore | Imprecise clinical vocabulary — uses BiomedBERT (29M PubMed abstracts) |
+| 2 | Content-Word F1 | Term-level factual overlap after removing generic stopwords |
+| 3 | NLI Contradiction Rate | Direct clinical contradiction — "increases" vs "decreases", "left" vs "right" |
+| 4 | Content-Word Hallucination | Prediction words not grounded in question or reference |
+
+### Running the evaluation
+
+To reproduce the full clinical evaluation (requires Kaggle T4 or equivalent GPU):
+
+```bash
+# Paste evaluate/clinical_kaggle.py into a Kaggle notebook cell
+# Results are pushed automatically to Shriyanshml/mediguide-rag-index
+```
+
+To use the reusable module locally:
+
+```python
+from evaluate.clinical_eval import run_all_clinical_metrics
+
+results = run_all_clinical_metrics(
+    preds=generated_answers,
+    refs=reference_answers,
+    questions=questions,
+    device="cpu",
+)
+```
+
+---
+
+## Comparison with Baselines
+
+| Model | Method | Train examples | BERTScore F1 | ROUGE-1 | Latency |
+|---|---|---|---|---|---|
+| **Phi-3 Mini QLoRA** ★ | QLoRA 4-bit | 2,000 | **0.8042** | 0.1852 | 7.24 s |
+| Falcon-7B QLoRA | QLoRA 4-bit | 200 | — | 0.25 | 10.94 s |
+| Falcon-7B LoRA | LoRA BF16 | 200 | — | 0.21 | 3.53 s |
+| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | — | 0.21 | 8.81 s |
+| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | — | 0.18 | 1.89 s |
+
+The Phi-3 Mini QLoRA model was trained on 10× more data and achieves a **Clinical BERTScore F1 of 0.9012** — the most clinically meaningful metric.
+
+---
+
+## Training Your Own Adapter
+
+```bash
+# Requires Kaggle T4 or equivalent GPU (≥15 GB VRAM)
+# Add HF_Token to Kaggle secrets before running
+
+python training/train_qlora_phi3.py
+```
+
+Key training decisions:
+- **4-bit NF4 quantisation** reduces the base model from ~14 GB (fp16) to ~4 GB
+- **Rank 8 LoRA** on `q_proj` and `v_proj` only — minimal parameters, maximum efficiency
+- **Gradient checkpointing** trades compute for memory, enabling batch size 2 on a T4
+- **`eager` attention** used instead of `flash_attention_2` for compatibility
+
+---
+
+## HF Spaces Deployment
+
+The `spaces/` directory contains a Gradio app ready for one-click deployment to [Hugging Face Spaces](https://huggingface.co/spaces) (free CPU tier).
+
+1. Create a new Space at [huggingface.co/new-space](https://huggingface.co/new-space)
+   - SDK: **Gradio** · Hardware: **CPU Basic (free)**
+2. Upload the three files from `spaces/`
+3. Add `HF_Token` as a Space secret
+
+---
+
+## Dependencies
+
+See [`requirements.txt`](requirements.txt) for the full list. Key packages:
+
+| Package | Purpose |
+|---|---|
+| `transformers >= 4.44` | Model loading, tokenisation |
+| `peft >= 0.12` | LoRA / QLoRA adapter management |
+| `trl >= 0.11` | SFTTrainer for instruction fine-tuning |
+| `bitsandbytes >= 0.43` | 4-bit NF4 quantisation |
+| `sentence-transformers` | MedQuAD embedding for RAG |
+| `faiss-cpu` | FAISS vector index |
+| `bert-score >= 0.3.13` | BERTScore computation |
+| `streamlit >= 1.38` | Chat application |
+| `gradio >= 4.44` | HF Spaces interface |
+
+---
+
+## Limitations & Disclaimer
+
+- This system is trained on NIH MedQuAD and is intended for **educational and research purposes only**
+- It is **not a substitute for professional medical advice**, diagnosis, or treatment
+- The model may generate plausible-sounding but incorrect medical information (hallucinations)
+- Clinical evaluation (NLI contradiction rate 12.5%) shows the model is borderline safe but not validated for clinical deployment
+- Always consult a qualified healthcare professional for medical decisions
+
+---
+
+## Citation
+
+If you use MEDIGUIDE in your research, please cite:
+
+```bibtex
+@misc{mediguide2026,
+  title   = {MEDIGUIDE: Domain-Adapted Medical QA with Phi-3 Mini QLoRA and RAG},
+  author  = {Raj, Shriyansh and Sharma, Manan},
+  year    = {2026},
+  url     = {https://github.com/mananms21/Mediguide-},
+  note    = {Model: https://huggingface.co/Shriyanshml/phi3-mini-qlora-mediguide}
 }
 ```
 
-### 🛠️ Preprocessing Pipeline
-
-1. **🔍 Quality Filtering**: Removed short answers and low-context examples
-2. **📝 Format Standardization**: 
-   ```
-   <human>: "What are the symptoms of diabetes?"
-   <assistant>: "Diabetes symptoms include frequent urination..."
-   ```
-3. **📊 Dataset Split**: 
-   - 🎯 **Training**: 200 examples
-   - 🧪 **Evaluation**: 50 examples
-   - 🔀 **Shuffled** for optimal distribution
-
 ---
 
-## 🔬 Fine-Tuning Methodologies
+## License
 
-<div align="center">
-
-### 🤖 **Base Models**
-**Falcon-7B** (Quantized) | **Falcon-1B** (Full Precision)
-
-*All methods trained on identical datasets for fair comparison*
-
-</div>
-
-### 1. 🎯 Prompt Tuning
-
-<div align="center">
-
-| **Feature** | **Details** |
-|---|---|
-| 🔧 **Mechanism** | Virtual tokens injected before questions |
-| 📏 **Training Scope** | Prompt embeddings only (<1MB) |
-| 🔒 **Base Model** | Weights frozen |
-| ⚡ **Advantages** | Ultra-fast training, minimal memory |
-
-</div>
-
-### 2. 🔗 LoRA (Low-Rank Adaptation)
-
-<div align="center">
-
-| **Feature** | **Details** |
-|---|---|
-| 🔧 **Mechanism** | Adapter layers in attention blocks |
-| 💾 **Precision** | 16-bit (BF16) |
-| ⚖️ **Trade-off** | Moderate cost, enhanced fluency |
-| 🎯 **Target** | Balanced performance-efficiency |
-
-</div>
-
-### 3. 🚀 QLoRA (Quantized LoRA)
-
-<div align="center">
-
-| **Feature** | **Details** |
-|---|---|
-| 🔧 **Mechanism** | 4-bit quantization via `bitsandbytes` |
-| 🔗 **Adapters** | LoRA adapters through PEFT |
-| 💾 **Efficiency** | Maximum memory optimization |
-| ⏱️ **Trade-off** | Slight latency increase |
-
-</div>
-
-### 🛠️ Technology Stack
-
-<div align="center">
-
-| **Category** | **Libraries** |
-|---|---|
-| 🤗 **Core ML** | Hugging Face Transformers |
-| 🔧 **Fine-tuning** | PEFT, TRL, BitsAndBytes |
-| 🔥 **Framework** | PyTorch, Accelerate |
-
-</div>
-
----
-
-## 📈 Evaluation Metrics
-
-<div align="center">
-
-| 📊 **Metric** | 📋 **Description** | 🎯 **Purpose** |
-|---|---|---|
-| **ROUGE (1, 2, L)** | Token overlap with reference answers | Text similarity assessment |
-| **Perplexity (PPL)** | Model confidence in generated text | Fluency measurement |
-| **Latency** | Average inference time per query | Performance benchmarking |
-| **Model Size** | Trainable parameters (adapter size) | Resource efficiency |
-
-</div>
-
----
-
-## 🏆 Results & Performance Analysis
-
-<div align="center">
-
-### 📊 **Comprehensive Performance Comparison**
-
-| **Method** | **ROUGE-1** | **ROUGE-2** | **ROUGE-L** | **Perplexity** | **Latency (s)** | **Adapter Size** |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Prompt Tuning (Q)** | `0.21` | `0.04` | `0.12` | `5.85` | `8.81` | `~0.43 MB` |
-| **Prompt Tuning (FP)** | `0.18` | `0.02` | `0.10` | `6.89` | `1.89` | `~0.20 MB` |
-| **LoRA (FP)** | `0.21` | `0.04` | `0.12` | `5.31` | `3.53` | `~12 MB` |
-| **🏆 QLoRA (4-bit)** | `0.45` | `0.17` | `0.30` | `3.45` | `10.94` | `~18 MB` |
-
-</div>
-
-### 📈 Performance Insights
-
-<details>
-<summary>🔍 Click for detailed analysis</summary>
-
-#### 🥇 **QLoRA - Champion Performance**
-- **Best Overall**: Highest ROUGE scores across all metrics
-- **Superior Fluency**: Lowest perplexity (3.45)
-- **Acceptable Latency**: 10.94s - reasonable for quality gained
-
-#### 🥈 **LoRA - Balanced Approach**
-- **Moderate Performance**: Decent ROUGE scores
-- **Good Fluency**: PPL of 5.31
-- **Fast Response**: 3.53s latency
-
-#### 🥉 **Prompt Tuning - Efficiency Focus**
-- **Lightweight**: Smallest model size
-- **Variable Performance**: FP version faster, Q version more accurate
-- **Edge-Friendly**: Minimal resource requirements
-
-</details>
-
----
-
-## 💡 Method Analysis & Trade-offs
-
-### 🎯 Prompt Tuning
-<div align="center">
-
-| **Pros** ✅ | **Cons** ❌ |
-|---|---|
-| Ultra-lightweight deployment | Lower accuracy scores |
-| Fastest inference times | Limited clinical fluency |
-| Minimal memory footprint | Reduced contextual understanding |
-| **Perfect for**: Edge/Mobile deployment | **Limitation**: Professional use cases |
-
-</div>
-
-### 🔗 LoRA (Full Precision)
-<div align="center">
-
-| **Pros** ✅ | **Cons** ❌ |
-|---|---|
-| Balanced quality-performance | Moderate resource requirements |
-| Good clinical accuracy | Higher memory usage |
-| Reasonable inference speed | Complex deployment setup |
-| **Perfect for**: Hosted GPU servers | **Limitation**: Resource constraints |
-
-</div>
-
-### 🚀 QLoRA (Quantized + LoRA)
-<div align="center">
-
-| **Pros** ✅ | **Cons** ❌ |
-|---|---|
-| **Best accuracy** across all metrics | Slower inference times |
-| Memory-efficient quantization | Complex quantization setup |
-| Superior clinical fluency | Higher computational overhead |
-| **Perfect for**: Cloud GPU deployment | **Limitation**: Real-time applications |
-
-</div>
-
----
-
-## 🚀 Deployment Strategy & Recommendations
-
-<div align="center">
-
-### 🎯 **Deployment Decision Matrix**
-
-</div>
-
-### 1. 📱 **Edge/Mobile Deployment**
-```yaml
-Method: Prompt Tuning
-Size: ~500KB
-Latency: ~3s
-Memory: Minimal
-Use Case: Mobile apps, offline operation
-Trade-off: Reduced clinical accuracy for portability
-```
-
-### 2. 🖥️ **Hosted GPU Servers**
-```yaml
-Method: LoRA (Full Precision)
-Size: ~30MB adapter + 13-16GB VRAM
-Latency: ~7.5s
-Platform: AWS, GCP, Azure
-Use Case: Web applications, API services
-Trade-off: Balanced performance and resources
-```
-
-### 3. ☁️ **Cloud GPU (Recommended)**
-```yaml
-Method: QLoRA (Quantized + LoRA)
-Size: ~30MB + 5-6GB quantized model
-Latency: ~10.9s
-Platform: Hugging Face Spaces, Colab Pro
-Use Case: Research, high-accuracy applications
-Trade-off: Best overall quality-efficiency balance
-```
-
----
-
-## 🎉 Conclusion & Future Roadmap
-
-### 🏁 **Key Findings**
-
-We successfully developed **MEDIGUIDE**, a medically-aware chatbot using Falcon-7B with advanced PEFT techniques. **QLoRA emerged as the optimal choice**, delivering the best trade-off between resource efficiency and output quality.
-
-### 🛣️ **Future Development Pipeline**
-
-<div align="center">
-
-| **Phase** | **Objective** | **Timeline** |
-|---|---|---|
-| 🔄 **Scale-Up** | Train on 10k+ examples for enhanced generalizability | Q3 2025 |
-| 🧪 **Model Optimization** | Experiment with smaller models + extended training | Q4 2025 |
-| 🔬 **Advanced PEFT** | Explore prefix tuning, adapters, and novel techniques | Q1 2026 |
-| ⚙️ **Hyperparameter Tuning** | Rigorous optimization for peak performance | Q2 2026 |
-| 🚀 **Production Deployment** | Implement recommended deployment strategies | Q3 2026 |
-
-</div>
-
----
-
-## 🖥️ Hardware Specifications
-
-<div align="center">
-
-### 💻 **Development Environment (Kaggle)**
-
-| **Component** | **Specification** |
-|---|---|
-| 🎮 **GPU** | NVIDIA T4 (15GB VRAM) |
-| 💾 **RAM** | 29GB System Memory |
-| 💿 **Storage** | 58GB SSD |
-| ⚡ **Platform** | Kaggle Notebooks |
-
-</div>
-
----
-
-## 📚 Resources & Links
-
-### 📊 Dataset
-- 🔗 [**MedQuAD Dataset on Kaggle**](https://www.kaggle.com/datasets/pythonafroz/medquad-medical-question-answer-for-ai-research)
-
-### 🤗 Model Links (Hugging Face)
-
-<div align="center">
-
-| **Model** | **Link** | **Description** |
-|---|---|---|
-| 🚀 **QLoRA** | [TestCase1/falcon-7b-qlora-chat-medical-bot](https://huggingface.co/TestCase1/falcon-7b-qlora-chat-medical-bot) | Best performance model |
-| 🔗 **LoRA** | [TestCase1/falcon-7b-lora-chat-medical-bot](https://huggingface.co/TestCase1/falcon-7b-lora-chat-medical-bot) | Balanced approach |
-| 🎯 **Prompt FP** | [TestCase1/falcon-7b-prompt-fp-chat-medical-bot](https://huggingface.co/TestCase1/falcon-7b-prompt-fp-chat-medical-bot) | Full precision prompt tuning |
-| ⚡ **Prompt Quantized** | [TestCase1/falcon-7b-prompt-chat-medical-bot](https://huggingface.co/TestCase1/falcon-7b-prompt-chat-medical-bot) | Quantized prompt tuning |
-
-</div>
-
----
+This project is released under the **MIT License**. The base model (Phi-3 Mini) is subject to [Microsoft's Research License](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct). The MedQuAD dataset is from the NIH National Library of Medicine.
