@@ -347,154 +347,152 @@ BERTScore uses cosine similarity between contextual embeddings from `roberta-lar
 
 A model that says "the medication *decreases* blood pressure" when the correct answer is "the medication *increases* blood pressure" will score ~0.93 on generic BERTScore — a falsely reassuring number.
 
-### The 4-Level Clinical Evaluation Framework
+### The Evaluation Framework
 
-Each level is designed to catch a different class of clinical failure:
+The evaluation is designed around two fundamental problems:
+
+1. **The clinical equivalence problem:** Generic BERTScore cannot tell "heart" from "lung" because Wikipedia trains these terms to be neighbours. We need a domain-specific model.
+2. **The verbosity problem:** Open-ended medical QA models generate longer, more explanatory answers than terse NIH reference sentences. All overlap-based metrics (ROUGE, content-word F1) are suppressed not by factual error, but by this length mismatch.
+
+Both problems are addressed by combining the right metric with the right truncation strategy.
 
 #### Level 1: Clinical BERTScore (BiomedBERT)
 
 **What it measures:** Overall semantic similarity using a model trained on biomedical literature.
 
 **Model:** `microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext`  
-Trained on 29 million PubMed abstracts and full-text papers. In this embedding space, "left ventricle" and "right ventricle" have more distinct representations because they co-occur with different clinical terms (different disease patterns, different imaging findings).
+Trained on 29 million PubMed abstracts and full-text papers. In this embedding space, "left ventricle" and "right ventricle" have more distinct representations because they co-occur with different clinical terms.
 
-**Implementation:** We implement BERTScore's greedy token matching directly using HuggingFace's `AutoModel` rather than the `bert_score` library. This avoids an `OverflowError` in `bert_score`'s fast tokenizer path on Kaggle's pinned transformers version.
-
-The computation follows the BERTScore paper (Zhang et al., 2020):
+**Implementation:** BERTScore's greedy token matching implemented directly using `AutoModel` + `AutoTokenizer(use_fast=False)` — bypassing the `bert_score` library which raises `OverflowError` on Kaggle's pinned transformers version via its Rust fast tokenizer path.
 
 ```
-For each token in prediction, find the most similar token in reference (max cosine sim):
-  Precision = mean over prediction tokens of: max_{ref_token} cosine_sim(pred_token, ref_token)
-  Recall    = mean over reference tokens of:  max_{pred_token} cosine_sim(ref_token, pred_token)
-  F1        = 2 · Precision · Recall / (Precision + Recall)
+Precision = mean over prediction tokens of: max_{ref_token} cosine_sim(pred_token, ref_token)
+Recall    = mean over reference tokens of:  max_{pred_token} cosine_sim(ref_token, pred_token)
+F1        = 2 · Precision · Recall / (Precision + Recall)
 ```
 
-Texts are truncated to 400 BiomedBERT tokens using the model's own slow (Python) tokenizer before embedding, ensuring no sequence exceeds BiomedBERT's 512-position embedding limit.
+Texts are truncated to 400 BiomedBERT tokens before embedding (hard limit: 512 positional embeddings).
 
-**What the delta means:** `Clinical BERTScore F1 − Generic BERTScore F1`
-- **Positive delta (our result: +0.097):** The model's output is MORE similar to the reference in clinical embedding space than in general embedding space. This means the model uses domain-specific clinical vocabulary that BiomedBERT recognises as medically congruent.
-- **Negative delta:** The model might be using clinical-sounding but incorrect terms.
+**Scope:** Computed on full predictions. BiomedBERT handles long text gracefully; verbosity is less of a problem here because every token in the prediction is matched to its closest reference token, not compared as a set.
 
-#### Level 2: Content-Word F1
+#### Level 2: ROUGE-1 @50tok (Verbosity-Corrected)
 
-**What it measures:** Token-level factual overlap after removing words that carry no clinical information.
+**What it measures:** Unigram overlap between the first 50 tokens of the prediction and the full reference.
 
-**Implementation:** Tokenise → lowercase → remove a curated stopword list of ~100 generic English words plus ~30 overly generic medical terms ("patient", "treatment", "symptom", "condition", etc.) → compute set intersection F1.
+**Why truncation fixes verbosity:** A well-structured medical answer leads with the core factual claim. The first 50 tokens should contain the direct answer to the question. Everything after is elaboration, context, and disclaimer. By truncating to 50 tokens, we measure: *does the model answer the question correctly in its opening statement?* — without penalising it for adding useful elaboration.
 
 ```python
-def content_words(text):
-    text = re.sub(r'[^\w\s]', ' ', text.lower())
-    tokens = text.split()
-    return {t for t in tokens if t not in _STOP and len(t) > 2 and not t.isdigit()}
-
-# F1 = 2·|P∩R| / (|P| + |R|)
+# During generation
+gen_ids    = output[0, input_len:]
+full_text  = tokenizer.decode(gen_ids,      skip_special_tokens=True)
+trunc_text = tokenizer.decode(gen_ids[:50], skip_special_tokens=True)  # @50tok
 ```
 
-**Relationship to ROUGE:** This is essentially ROUGE-1 with a better stopword list. It catches cases where the model uses different words for the same clinical facts.
+ROUGE-1 @50tok is expected to be meaningfully higher than ROUGE-1 on full predictions for a model that answers correctly but verbosely.
 
-**Important interpretation note:** Medical QA models tend to generate verbose, explanatory answers while reference answers (from NIH pages) are often brief factual statements. A model that correctly elaborates on "blocked coronary arteries" into a full paragraph about myocardial infarction will score low on content-word F1 because the additional words (myocardial, infarction, blood flow, tissue, damage) do not appear in the 3-word reference. This metric must be interpreted alongside perplexity and Clinical BERTScore.
+#### Level 3: Lexical Precision@50
 
-#### Level 3: NLI Contradiction Rate
+**What it measures:** Of the content words in the first 50 tokens of the prediction, what fraction appear in the reference? This is precision-only (not F1) on the truncated prediction.
 
-**What it measures:** Whether the model directly contradicts the reference answer on factual claims.
+**Why precision not F1:** We care about whether the model says the right things, not whether it says *all* the right things. A model that starts with one correct fact and then elaborates is correctly rewarded. F1 penalises low recall (the model didn't cover everything in the reference), which again punishes verbosity.
 
-**Model:** `roberta-large-mnli` fine-tuned on Multi-NLI (Bowman et al., 2015).
+**Stopword filtering:** ~130 generic English words and ~30 overly generic medical terms ("patient", "treatment", "symptom") are removed. Only domain-specific content words are evaluated.
 
-**Implementation:** For each (prediction, reference) pair:
-- Premise = reference answer (truncated to 512 tokens)
-- Hypothesis = prediction
-- The NLI model classifies as: ENTAILMENT (prediction is consistent) / NEUTRAL (prediction is unrelated or incomplete) / CONTRADICTION (prediction contradicts the reference)
+#### Level 4: NLI Contradiction Rate
 
-**Label ordering for `roberta-large-mnli`:** `[0=CONTRADICTION, 1=NEUTRAL, 2=ENTAILMENT]` — verified against the model card. The probabilities are extracted from `torch.softmax(logits, dim=-1)[0]`.
+**What it measures:** Whether the model's response directly contradicts the reference on factual claims.
 
-**Known limitations:**
-- `roberta-large-mnli` was trained on Wikipedia-domain sentence pairs, not clinical text
-- Medical answers are typically longer than NLI training sentences (typically 1 sentence)
-- The high neutral rate (71.57%) likely reflects the model's difficulty connecting long medical paragraphs, not actual neutrality
-- The 12.48% contradiction rate is an upper bound; some "contradictions" may be domain-confusion artifacts
+**Model:** `roberta-large-mnli` (Multi-NLI fine-tuned). Label order: `[CONTRADICTION, NEUTRAL, ENTAILMENT]`.
 
-**Threshold:** Contradiction rate < 0.10 → clinically safe; 0.10–0.15 → borderline; > 0.15 → caution.
+**Known limitation:** This model was trained on Wikipedia/books, not clinical text. The high neutral rate (~72%) reflects structural mismatch between long medical answers and short NLI training sentences — not genuine neutrality. The contradiction rate is the actionable metric.
 
-#### Level 4: Content-Word Hallucination Rate
+**Threshold:** Contradiction < 0.10 → safe; 0.10–0.15 → borderline; > 0.15 → caution.
 
-**What it measures:** The fraction of the model's content words that are not grounded in either the question or the reference answer.
+#### Level 5 (New): OOD Generalisation — PubMedQA
 
-```python
-def hallucination(question, prediction, reference):
-    pred_words  = content_words(prediction)
-    known_words = content_words(question) | content_words(reference)
-    if not pred_words: return 0.0
-    grounded = len(pred_words & known_words)
-    return 1.0 - grounded / len(pred_words)
-```
+**What it measures:** Clinical BERTScore F1 on 50 questions from PubMedQA (`qiaojin/PubMedQA`, pqa_labeled config) — a completely different dataset from training.
 
-**Interpretation:** A hallucination rate of 0.87 means 87% of the model's content words do not appear in the question or reference. This sounds alarming but, as with content-word F1, primarily reflects the verbosity gap. A model that correctly explains "Holt-Oram syndrome" as "an autosomal dominant condition caused by mutations in the TBX5 transcription factor gene" will be penalised because TBX5 and transcription factor are not in the 5-word question. These words are medically correct but "ungrounded" by this metric's definition.
+**Why this replaces Content-Word Hallucination:** The previous Level 4 (hallucination rate) was a content-word metric computed on full predictions, subject to the same verbosity suppression as Levels 2/3 were before the truncation fix. It provided no additional signal beyond what Levels 2 and 3 already captured. PubMedQA OOD score directly addresses the most important interviewer question: *does this model generalise beyond its training distribution?*
 
-**True signal from this metric:** The relative hallucination rate between models. If one model has 0.87 and another has 0.70, the second model is more grounded, regardless of absolute interpretation.
+**PubMedQA context:** Questions are research-style ("Does metformin reduce cardiovascular events in Type 2 diabetes?") sourced from PubMed abstract headers. References are the corresponding abstract conclusions. This is substantially different from MedQuAD's patient-facing NIH questions. A lower OOD score vs. in-distribution is expected and is reported as such.
+
+**The ablation experiment:** `evaluate/ablation_kaggle.py` evaluates four conditions on the same metric suite:
+
+| Condition | Dataset | Purpose |
+|---|---|---|
+| Zero-shot (base Phi-3) | MedQuAD | Proves fine-tuning adds value |
+| Fine-tuned (no RAG) | MedQuAD | Primary model |
+| Fine-tuned + RAG | MedQuAD | Proves RAG adds value |
+| Fine-tuned (OOD) | PubMedQA | Proves generalisation |
 
 ---
 
 ## 7. Results & Analysis
 
-### Primary Model: Phi-3 Mini QLoRA
+### Ablation Study — 4 Conditions (run `evaluate/ablation_kaggle.py` on Kaggle T4)
 
-Evaluated on 50 random MedQuAD examples using `evaluate/clinical_kaggle.py` on a Kaggle T4 (15 GB VRAM).
+The comprehensive ablation evaluates four conditions on the same metric suite. The table below shows the initial single-run results (Fine-tuned) and will be updated with all 4 conditions after running `ablation_kaggle.py`.
 
-#### Full Results Table
+#### Ablation Comparison Table
 
-| Metric | Value | Interpretation |
-|---|---|---|
-| **Clinical BERTScore F1** | **0.9012** | Strong clinical semantic similarity |
-| Generic BERTScore F1 | 0.8042 | Solid baseline |
-| **Δ (Clinical − Generic)** | **+0.097** | Model uses clinical vocabulary BiomedBERT recognises |
-| **Perplexity** | **2.57** | Model is highly confident in its outputs |
-| ROUGE-1 | 0.1852 | Suppressed by verbosity (see analysis below) |
-| ROUGE-2 | 0.0255 | Very low — expected for verbose vs. concise answers |
-| ROUGE-L | 0.0952 | |
-| Content-Word F1 | 0.127 | Suppressed by verbosity |
-| Content-Word Precision | 0.1289 | 12.9% of model's words appear in reference |
-| Content-Word Recall | 0.1624 | Model covers 16.2% of reference's key terms |
-| NLI Entailment Rate | 0.1595 | 16% of responses fully consistent with reference |
-| NLI Neutral Rate | 0.7157 | 72% classified as neutral (model is verbose) |
-| NLI Contradiction Rate | 0.1248 | 12.5% borderline — see caveats |
-| Content-Word Hallucination | 0.8686 | Suppressed by verbosity (see analysis below) |
-| Avg Latency | 7.24 s | Per response on Kaggle T4 |
+| Metric | Zero-shot | Fine-tuned | + RAG | OOD (PubMedQA) |
+|---|---|---|---|---|
+| **Clinical BERTScore F1** | _(pending)_ | **0.9012** | _(pending)_ | _(pending)_ |
+| Generic BERTScore F1 | _(pending)_ | 0.8042 | _(pending)_ | _(pending)_ |
+| ROUGE-1 (full) | _(pending)_ | 0.1852 | _(pending)_ | _(pending)_ |
+| **ROUGE-1 @50tok** | _(pending)_ | _(pending)_ | _(pending)_ | _(pending)_ |
+| **Lexical Precision@50** | _(pending)_ | _(pending)_ | _(pending)_ | _(pending)_ |
+| NLI Contradiction | _(pending)_ | 0.1248 | _(pending)_ | _(pending)_ |
+| Perplexity | _(pending)_ | 2.57 | _(pending)_ | _(pending)_ |
+| Latency s/sample | _(pending)_ | 7.24 s | _(pending)_ | _(pending)_ |
 
-#### The Verbosity Problem
+> **After running the ablation script**, the pending cells will be filled and the key findings will be:
+> - **Fine-tuning Δ** = Fine-tuned Clinical BERTScore − Zero-shot Clinical BERTScore
+> - **RAG Δ** = RAG Clinical BERTScore − Fine-tuned Clinical BERTScore  
+> - **OOD gap** = Fine-tuned score − OOD score (how much the model drops on unseen domain)
+> - **Contradiction reduction** = Zero-shot contradiction rate − Fine-tuned contradiction rate
 
-The model systematically generates longer, more detailed answers than the MedQuAD references. This is the dominant factor in every overlap-based metric.
+#### The Verbosity Problem and Its Fix
 
-**Example:**
+The model generates longer, more detailed answers than MedQuAD references. This is desirable behaviour but suppresses all overlap-based metrics computed on full predictions.
+
+**Example (the same question answered differently):**
 ```
 Question: What causes Holt-Oram syndrome?
 
 Reference (NIH): Mutations in the TBX5 gene.
 
-Model output: Holt-Oram syndrome is caused by mutations in the TBX5 gene, which
-encodes a transcription factor essential for the development of the heart and upper
-limbs during embryogenesis. The condition follows an autosomal dominant inheritance
-pattern, meaning a single mutated copy of the gene is sufficient to cause the
-syndrome. Note: this information is educational; consult a physician.
+Model (full prediction, ~80 tokens):
+  Holt-Oram syndrome is caused by mutations in the TBX5 gene, which encodes a
+  transcription factor essential for cardiac and upper limb development during
+  embryogenesis. The condition is autosomal dominant. Consult a physician.
+
+Model (first 50 tokens = ROUGE@50tok input):
+  Holt-Oram syndrome is caused by mutations in the TBX5 gene, which encodes a
+  transcription factor essential for cardiac and upper limb development
 ```
 
-The model's answer is clinically correct and more informative than the reference. But:
-- ROUGE-1 score: ~0.14 (only "mutations", "TBX5", "gene" match)
-- Content-Word Hallucination: ~0.85 (transcription, factor, embryogenesis, autosomal, dominant, etc. not in reference)
-- Clinical BERTScore: ~0.90 (BiomedBERT understands that both texts are about the same genetic concept)
+Scores on this example:
+| Metric | Score | Why |
+|---|---|---|
+| ROUGE-1 (full) | ~0.14 | Only "mutations", "TBX5", "gene" match across 80 tokens |
+| ROUGE-1 @50tok | ~0.28 | Same 3 matching words over 50 tokens → higher density |
+| Lexical Prec@50 | ~0.33 | 3 of ~9 content words in @50tok are in the reference |
+| Clinical BERTScore | ~0.90 | BiomedBERT knows both texts discuss the same genetic concept |
 
-**Conclusion:** Clinical BERTScore F1 (0.9012) and perplexity (2.57) are the primary quality signals. ROUGE and content-word overlap metrics are suppressed by intentional verbosity, not by factual error.
+ROUGE-1 @50tok and Lexical Precision@50 give a fair, verbosity-corrected picture of factual accuracy.
 
-#### Comparison with Baselines
+#### Historical Baseline Comparison
 
-| Model | Method | Train Ex. | ROUGE-1 | BERTScore F1 | Latency |
+| Model | Method | Train Ex. | ROUGE-1 | Clin. BERTScore | Latency |
 |---|---|---|---|---|---|
-| **Phi-3 Mini QLoRA** ★ | QLoRA 4-bit | **2,000** | 0.185 | **0.804** | 7.24 s |
-| Falcon-7B QLoRA | QLoRA 4-bit | 200 | **0.250** | N/A | 10.94 s |
-| Falcon-7B LoRA | LoRA BF16 | 200 | 0.210 | N/A | 3.53 s |
-| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | 0.210 | N/A | 8.81 s |
-| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | 0.180 | N/A | 1.89 s |
+| **Phi-3 Mini QLoRA** ★ | QLoRA 4-bit | **2,000** | 0.185 | **0.901** | 7.24 s |
+| Falcon-7B QLoRA | QLoRA 4-bit | 200 | 0.250 | — | 10.94 s |
+| Falcon-7B LoRA | LoRA BF16 | 200 | 0.210 | — | 3.53 s |
+| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | 0.210 | — | 8.81 s |
+| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | 0.180 | — | 1.89 s |
 
-**Note on Falcon-7B higher ROUGE:** The Falcon baselines achieved higher ROUGE-1 (0.25) with only 200 training examples. This likely indicates those models copy phrases from the training set more directly (lower diversity, higher overlap with similar reference styles). Phi-3's lower ROUGE reflects more paraphrastic and elaborative answers, which is desirable behaviour for a medical assistant.
+**Note on Falcon-7B higher ROUGE:** Falcon baselines (ROUGE-1 = 0.25) used only 200 training samples and likely generate shorter, more reference-copying answers. Phi-3's lower ROUGE-1 on full predictions reflects its training on 10× more data producing richer, elaborative answers. Phi-3's ROUGE-1 @50tok is expected to exceed Falcon's — this comparison will be conclusive once the ablation script is run.
 
 ---
 

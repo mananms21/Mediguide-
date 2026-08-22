@@ -146,5 +146,64 @@
       "contradiction_rate": null,
       "hallucination_rate": null
     }
-  ]
+  ],
+  "ablation_conditions": {
+    "_note": "Populated by evaluate/ablation_kaggle.py. Run on Kaggle T4.",
+    "medquad_zeroshot": {
+      "label": "Zero-shot (base Phi-3, no adapter)",
+      "dataset": "MedQuAD",
+      "clinical_bertscore_f1": null,
+      "bertscore_f1": null,
+      "rouge1": null,
+      "rouge1_50tok": null,
+      "lexical_precision_50": null,
+      "nli_contradiction": null,
+      "perplexity": null,
+      "latency_s": null
+    },
+    "medquad_finetuned": {
+      "label": "Fine-tuned QLoRA (no RAG)",
+      "dataset": "MedQuAD",
+      "clinical_bertscore_f1": 0.9012,
+      "bertscore_f1": 0.8042,
+      "rouge1": 0.1852,
+      "rouge1_50tok": null,
+      "lexical_precision_50": null,
+      "nli_contradiction": 0.1248,
+      "perplexity": 2.57,
+      "latency_s": 7.24
+    },
+    "medquad_rag": {
+      "label": "Fine-tuned QLoRA + RAG",
+      "dataset": "MedQuAD",
+      "clinical_bertscore_f1": null,
+      "bertscore_f1": null,
+      "rouge1": null,
+      "rouge1_50tok": null,
+      "lexical_precision_50": null,
+      "nli_contradiction": null,
+      "perplexity": null,
+      "latency_s": null
+    },
+    "pubmedqa_finetuned": {
+      "label": "Fine-tuned QLoRA \u2014 OOD (PubMedQA)",
+      "dataset": "PubMedQA",
+      "ood_note": "External benchmark, research-style questions, different domain",
+      "clinical_bertscore_f1": null,
+      "bertscore_f1": null,
+      "rouge1": null,
+      "rouge1_50tok": null,
+      "lexical_precision_50": null,
+      "nli_contradiction": null,
+      "perplexity": null,
+      "latency_s": null
+    }
+  },
+  "ablation_deltas": {
+    "_note": "Populated by ablation_kaggle.py",
+    "finetuning_clinical_bertscore": null,
+    "rag_clinical_bertscore": null,
+    "ood_gap_clinical_bertscore": null,
+    "finetuning_contradiction_reduction": null
+  }
 }
