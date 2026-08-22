@@ -478,8 +478,7 @@ st.markdown(f"""
 
 
 # ── Chat area ─────────────────────────────────────────────────────
-st.markdown('<div class="chat-area">', unsafe_allow_html=True)
-
+# Show empty state or messages — no broken HTML wrapper, styled via CSS
 if not st.session_state.messages:
     st.markdown("""
 <div class="empty-state">
@@ -487,63 +486,64 @@ if not st.session_state.messages:
   <div class="empty-title">Ask a medical question</div>
   <div class="empty-sub">
     MediGuide retrieves relevant passages from 14,782 NIH MedQuAD Q&amp;A pairs<br>
-    and generates evidence-based answers using a fine-tuned Phi-3 Mini model.
+    and generates evidence-based answers using a fine-tuned Phi-3 Mini model.<br>
+    <span style="color:#9ca3af;font-size:0.78rem">
+      The model loads on your first message (may take ~1 min on first run).
+    </span>
   </div>
 </div>
 """, unsafe_allow_html=True)
-
-for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.markdown(
-            f'<div class="msg msg-user"><div class="msg-user-bubble">{msg["content"]}</div></div>',
-            unsafe_allow_html=True,
-        )
-    else:
-        context_html = ""
-        if msg.get("context"):
-            snippet = msg["context"][:400].replace("<", "&lt;").replace(">", "&gt;")
-            context_html = (
-                f'<div class="rag-box">'
-                f'<div class="rag-box-title">📚 Retrieved context</div>'
-                f'{snippet}…</div>'
+else:
+    # Render each message
+    for msg in st.session_state.messages:
+        if msg["role"] == "user":
+            st.markdown(
+                f'<div class="msg msg-user">'
+                f'<div class="msg-user-bubble">{msg["content"]}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
-        st.markdown(
-            f'<div class="msg msg-bot">'
-            f'<div class="msg-bot-avatar">⚕</div>'
-            f'<div class="msg-bot-bubble">'
-            f'<div class="msg-bot-name">MediGuide</div>'
-            f'{msg["content"]}'
-            f'{context_html}'
-            f'<div class="msg-meta">⏱ {msg.get("latency","")} &nbsp;·&nbsp; {msg.get("model","")}</div>'
-            f'</div></div>',
-            unsafe_allow_html=True,
-        )
+        else:
+            context_html = ""
+            if msg.get("context"):
+                snippet = msg["context"][:400].replace("<", "&lt;").replace(">", "&gt;")
+                context_html = (
+                    f'<div class="rag-box">'
+                    f'<div class="rag-box-title">📚 Retrieved context</div>'
+                    f'{snippet}…</div>'
+                )
+            st.markdown(
+                f'<div class="msg msg-bot">'
+                f'<div class="msg-bot-avatar">⚕</div>'
+                f'<div class="msg-bot-bubble">'
+                f'<div class="msg-bot-name">MediGuide</div>'
+                f'{msg["content"]}'
+                f'{context_html}'
+                f'<div class="msg-meta">⏱ {msg.get("latency","")} &nbsp;·&nbsp; {msg.get("model","")}</div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+    if st.button("🗑 Clear conversation", type="secondary"):
+        st.session_state.messages = []
+        st.rerun()
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.divider()
 
-
-# ── Input ─────────────────────────────────────────────────────────
+# ── Input form ────────────────────────────────────────────────────
 with st.form("chat_form", clear_on_submit=True):
-    st.markdown('<div class="input-area">', unsafe_allow_html=True)
     user_input = st.text_area(
-        "Question",
+        "Your question",
         placeholder="e.g. What are the early warning signs of Type 2 diabetes?",
-        height=80,
+        height=90,
         label_visibility="collapsed",
     )
-    st.markdown('</div>', unsafe_allow_html=True)
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        submitted = st.form_submit_button("Send message", use_container_width=True)
-    with col2:
-        st.form_submit_button("Clear", use_container_width=True)
+    submitted = st.form_submit_button("Send →", use_container_width=True, type="primary")
 
 if submitted and user_input.strip():
     question = user_input.strip()
     st.session_state.messages.append({"role": "user", "content": question})
 
-    # Load model on demand — cached after first call, so subsequent messages are instant
-    with st.spinner("Loading model… (first message only — this takes ~1 min)"):
+    with st.spinner("Loading model… (first message only — this takes ~1 min on first run)"):
         model, tokenizer, load_err = load_model(selected_model)
 
     if load_err or model is None:
@@ -555,7 +555,7 @@ if submitted and user_input.strip():
         try:
             context = retriever.format_context(question, top_k)
         except Exception:
-            context = ""  # RAG failed — fall back to direct generation silently
+            context = ""
 
     prompt = build_prompt(question, meta["type"], context)
 
@@ -574,9 +574,9 @@ if submitted and user_input.strip():
     st.rerun()
 
 
-# ── Example questions ─────────────────────────────────────────────
+# ── Suggested questions (only on empty state) ─────────────────────
 if not st.session_state.messages:
-    st.markdown('<div class="chip-label">Suggested questions</div>', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:0.72rem;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-top:0.5rem">Suggested questions</p>', unsafe_allow_html=True)
     examples = [
         "What is Type 2 diabetes and how is it managed?",
         "What are the symptoms of hypertension?",
@@ -588,7 +588,6 @@ if not st.session_state.messages:
             if st.button(ex, use_container_width=True):
                 st.session_state.messages.append({"role": "user", "content": ex})
                 st.rerun()
-
 
 # ── Disclaimer ────────────────────────────────────────────────────
 st.markdown("""
