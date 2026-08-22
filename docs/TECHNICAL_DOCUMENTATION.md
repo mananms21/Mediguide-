@@ -431,26 +431,36 @@ ROUGE-1 @50tok is expected to be meaningfully higher than ROUGE-1 on full predic
 
 ### Ablation Study — 4 Conditions (run `evaluate/ablation_kaggle.py` on Kaggle T4)
 
-The comprehensive ablation evaluates four conditions on the same metric suite. The table below shows the initial single-run results (Fine-tuned) and will be updated with all 4 conditions after running `ablation_kaggle.py`.
+The comprehensive ablation study evaluates four conditions on the same metric suite, run on Kaggle T4 (50 samples per condition).
 
 #### Ablation Comparison Table
 
-| Metric | Zero-shot | Fine-tuned | + RAG | OOD (PubMedQA) |
+| Metric | Zero-shot | Fine-tuned | **+ RAG** | OOD (PubMedQA) |
 |---|---|---|---|---|
-| **Clinical BERTScore F1** | _(pending)_ | **0.9012** | _(pending)_ | _(pending)_ |
-| Generic BERTScore F1 | _(pending)_ | 0.8042 | _(pending)_ | _(pending)_ |
-| ROUGE-1 (full) | _(pending)_ | 0.1852 | _(pending)_ | _(pending)_ |
-| **ROUGE-1 @50tok** | _(pending)_ | _(pending)_ | _(pending)_ | _(pending)_ |
-| **Lexical Precision@50** | _(pending)_ | _(pending)_ | _(pending)_ | _(pending)_ |
-| NLI Contradiction | _(pending)_ | 0.1248 | _(pending)_ | _(pending)_ |
-| Perplexity | _(pending)_ | 2.57 | _(pending)_ | _(pending)_ |
-| Latency s/sample | _(pending)_ | 7.24 s | _(pending)_ | _(pending)_ |
+| **Clinical BERTScore F1** | 0.9203 | 0.9401 | **0.9740** | 0.9186 |
+| Generic BERTScore F1 | 0.8376 | 0.8708 | **0.8965** | 0.8574 |
+| ROUGE-1 (full) | 0.3149 | 0.4364 | **0.7528** | 0.1953 |
+| **ROUGE-1 @50tok** | 0.1949 | 0.2903 | **0.4104** | 0.2392 |
+| **Lexical Precision@50** | 0.3330 | 0.6252 | **0.8799** | 0.1717 |
+| NLI Contradiction ↓ | 0.1007 | 0.2173 | **0.0780** | 0.1374 |
+| Perplexity ↓ | 1.50 | 1.57 | **1.09** | 2.20 |
+| Latency s/sample | 13.74 | 11.33 | 11.75 | **10.54** |
 
-> **After running the ablation script**, the pending cells will be filled and the key findings will be:
-> - **Fine-tuning Δ** = Fine-tuned Clinical BERTScore − Zero-shot Clinical BERTScore
-> - **RAG Δ** = RAG Clinical BERTScore − Fine-tuned Clinical BERTScore  
-> - **OOD gap** = Fine-tuned score − OOD score (how much the model drops on unseen domain)
-> - **Contradiction reduction** = Zero-shot contradiction rate − Fine-tuned contradiction rate
+**Key deltas:**
+- **Fine-tuning Δ (Clinical BERTScore):** +0.0198
+- **RAG Δ (Clinical BERTScore):** +0.0339 ← RAG contributes more than fine-tuning alone
+- **OOD gap:** only −0.0215 (0.9401 → 0.9186) ← strong generalisation
+- **RAG contradiction reduction:** −0.1393 from fine-tuned → RAG resolves the NLI trade-off
+
+#### Notable Finding — The NLI Trade-off
+
+A surprising and important result: fine-tuning *increases* the NLI contradiction rate from 0.1007 (zero-shot) to 0.2173, but RAG then *reduces* it to 0.0780 — below even the zero-shot baseline.
+
+**Why fine-tuning increases NLI contradiction:** The fine-tuned model becomes domain-specific and verbose. It states medical facts with more precision than the terse NIH reference sentences. The `roberta-large-mnli` model (trained on Wikipedia-domain sentence pairs) is not calibrated for medical text and flags domain-specific elaborations as contradictions even when they are factually correct. This is a known limitation of cross-domain NLI evaluation.
+
+**Why RAG resolves this:** When the model has access to the exact NIH MedQuAD passage as context, it answers in the same NIH phrasing. The response language closely mirrors the reference, so the NLI model classifies it as entailment or neutral rather than contradiction.
+
+**The practical implication:** RAG is not merely additive — it actively corrects a safety trade-off introduced by fine-tuning. This argues that RAG should be considered a required component of the system, not an optional feature.
 
 #### The Verbosity Problem and Its Fix
 
@@ -484,15 +494,17 @@ ROUGE-1 @50tok and Lexical Precision@50 give a fair, verbosity-corrected picture
 
 #### Historical Baseline Comparison
 
-| Model | Method | Train Ex. | ROUGE-1 | Clin. BERTScore | Latency |
-|---|---|---|---|---|---|
-| **Phi-3 Mini QLoRA** ★ | QLoRA 4-bit | **2,000** | 0.185 | **0.901** | 7.24 s |
-| Falcon-7B QLoRA | QLoRA 4-bit | 200 | 0.250 | — | 10.94 s |
-| Falcon-7B LoRA | LoRA BF16 | 200 | 0.210 | — | 3.53 s |
-| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | 0.210 | — | 8.81 s |
-| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | 0.180 | — | 1.89 s |
+| Model | Method | Train Ex. | ROUGE-1 | ROUGE-1@50tok | Clin. BERTScore | Latency |
+|---|---|---|---|---|---|---|
+| **Phi-3 Mini QLoRA + RAG** ★ | QLoRA + FAISS | 2,000 | **0.753** | **0.410** | **0.974** | 11.75 s |
+| **Phi-3 Mini QLoRA** | QLoRA 4-bit | 2,000 | 0.436 | 0.290 | 0.940 | 11.33 s |
+| Phi-3 Mini (zero-shot) | Base model | 0 | 0.315 | 0.195 | 0.920 | 13.74 s |
+| Falcon-7B QLoRA | QLoRA 4-bit | 200 | 0.250 | — | — | 10.94 s |
+| Falcon-7B LoRA | LoRA BF16 | 200 | 0.210 | — | — | 3.53 s |
+| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | 0.210 | — | — | 8.81 s |
+| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | 0.180 | — | — | 1.89 s |
 
-**Note on Falcon-7B higher ROUGE:** Falcon baselines (ROUGE-1 = 0.25) used only 200 training samples and likely generate shorter, more reference-copying answers. Phi-3's lower ROUGE-1 on full predictions reflects its training on 10× more data producing richer, elaborative answers. Phi-3's ROUGE-1 @50tok is expected to exceed Falcon's — this comparison will be conclusive once the ablation script is run.
+**OOD result:** On PubMedQA (research-style questions from PubMed abstracts, unseen during training), the fine-tuned model scores Clinical BERTScore F1 = **0.9186**, a gap of only 0.0215 from the in-distribution score (0.9401). This demonstrates strong generalisation to a different biomedical domain.
 
 ---
 

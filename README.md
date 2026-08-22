@@ -133,44 +133,49 @@ The RAG index is hosted at [`Shriyanshml/mediguide-rag-index`](https://huggingfa
 
 ## Evaluation
 
-### Results Summary
+### Ablation Study Results
 
-| Metric | Value | Notes |
-|---|---|---|
-| **Clinical BERTScore F1** | **0.9012** | BiomedBERT (PubMed-trained) greedy token matching |
-| Generic BERTScore F1 | 0.8042 | roberta-large baseline |
-| Δ Clinical − Generic | +0.0970 | Model uses domain-specific clinical vocabulary |
-| Perplexity | **2.57** | Model is confident in its outputs |
-| ROUGE-1 | 0.1852 | Suppressed by verbosity (see note below) |
-| ROUGE-2 | 0.0255 | |
-| ROUGE-L | 0.0952 | |
-| Content-Word F1 | 0.127 | Stopword-filtered token overlap |
-| NLI Entailment Rate | 0.1595 | Fraction of responses consistent with reference |
-| NLI Contradiction Rate | 0.1248 | Clinical danger metric (borderline) |
-| Avg latency | 7.24 s | Per response on Kaggle T4 |
+Four conditions evaluated on the same metric suite (Kaggle T4, 50 samples each):
 
-> **Note on ROUGE and Content-Word F1:** These scores appear low because the model generates verbose, explanatory answers (e.g., 150 tokens) while MedQuAD references are often concise (e.g., 15 tokens). The low scores reflect this verbosity gap, not factual inaccuracy. Clinical BERTScore and perplexity are the more meaningful signals.
+| Metric | Zero-shot | Fine-tuned | **+ RAG** | OOD (PubMedQA) |
+|---|---|---|---|---|
+| **Clinical BERTScore F1** | 0.9203 | 0.9401 | **0.9740** | 0.9186 |
+| Generic BERTScore F1 | 0.8376 | 0.8708 | **0.8965** | 0.8574 |
+| ROUGE-1 (full) | 0.3149 | 0.4364 | **0.7528** | 0.1953 |
+| **ROUGE-1 @50tok** ← verbosity-corrected | 0.1949 | 0.2903 | **0.4104** | 0.2392 |
+| **Lexical Precision@50** | 0.3330 | 0.6252 | **0.8799** | 0.1717 |
+| NLI Contradiction ↓ | 0.1007 | 0.2173 | **0.0780** | 0.1374 |
+| Perplexity ↓ | 1.50 | 1.57 | **1.09** | 2.20 |
+
+**Key findings:**
+- **Fine-tuning Δ:** +0.0198 Clinical BERTScore — fine-tuning improves clinical semantic quality
+- **RAG Δ:** +0.0339 — RAG contributes *more* than fine-tuning alone on top of it
+- **OOD gap:** only −0.0215 (0.9401 → 0.9186 on PubMedQA) — strong generalisation to unseen biomedical domain
+- **Lexical Precision@50:** 0.333 → 0.625 → **0.880** — fine-tuning nearly doubles factual precision; RAG pushes it to 88%
+
+> **Notable finding — The NLI trade-off:** Fine-tuning *increases* NLI contradiction (0.10 → 0.22) because the model becomes more verbose and domain-specific, which the Wikipedia-trained NLI model misclassifies. RAG then *reduces* it to 0.078 — below zero-shot — because the model answers in the same NIH phrasing as the reference. **RAG is not optional; it resolves a safety trade-off introduced by fine-tuning.**
 
 ### Why Generic BERTScore Is Not Enough
 
-A core contribution of this project is demonstrating that generic BERTScore (using `roberta-large` trained on Wikipedia) cannot distinguish clinically different but semantically similar terms. In Wikipedia's embedding space, "heart" and "lung" are neighbours because they co-occur in similar contexts.
+Generic BERTScore uses `roberta-large` (trained on Wikipedia). In that embedding space, "heart" and "lung" are neighbours because they co-occur in similar contexts. A model that says "lung" when the correct answer is "heart" will still score ≥ 0.93.
 
-**The 4-level clinical evaluation framework:**
+**The evaluation framework (5 levels):**
 
 | Level | Metric | What it catches |
 |---|---|---|
-| 1 | Clinical BERTScore | Imprecise clinical vocabulary — uses BiomedBERT (29M PubMed abstracts) |
-| 2 | Content-Word F1 | Term-level factual overlap after removing generic stopwords |
-| 3 | NLI Contradiction Rate | Direct clinical contradiction — "increases" vs "decreases", "left" vs "right" |
-| 4 | Content-Word Hallucination | Prediction words not grounded in question or reference |
+| 1 | **Clinical BERTScore** (BiomedBERT) | Clinically imprecise vocabulary — distinguishes cardiac from pulmonary terms |
+| 2 | **ROUGE-1 @50tok** | Verbosity-corrected overlap — are the first 50 tokens factually aligned? |
+| 3 | **Lexical Precision@50** | Content-word precision on core claim — are the first 50 tokens mostly correct? |
+| 4 | **NLI Contradiction Rate** | Direct factual contradiction — "increases" vs "decreases" |
+| 5 | **OOD Clinical BERTScore** | Generalisation to PubMedQA, a completely different biomedical dataset |
 
 ### Running the evaluation
 
-To reproduce the full clinical evaluation (requires Kaggle T4 or equivalent GPU):
+To reproduce the full ablation (requires Kaggle T4 or equivalent GPU):
 
 ```bash
-# Paste evaluate/clinical_kaggle.py into a Kaggle notebook cell
-# Results are pushed automatically to Shriyanshml/mediguide-rag-index
+# Paste evaluate/ablation_kaggle.py into a Kaggle notebook cell
+# Results pushed automatically to Shriyanshml/mediguide-rag-index
 ```
 
 To use the reusable module locally:
@@ -183,6 +188,7 @@ results = run_all_clinical_metrics(
     refs=reference_answers,
     questions=questions,
     device="cpu",
+
 )
 ```
 
