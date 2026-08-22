@@ -1,9 +1,8 @@
 """
-MEDIGUIDE — Main Streamlit Chat Application
+MEDIGUIDE — Chat Application
 Run: streamlit run app/app.py
 """
 
-import json
 import os
 import sys
 import time
@@ -11,251 +10,335 @@ from pathlib import Path
 
 import streamlit as st
 
-# ── Path setup ────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-# ── Page configuration ────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────────
 st.set_page_config(
-    page_title="MEDIGUIDE — Medical AI",
-    page_icon="🏥",
+    page_title="MediGuide",
+    page_icon="⚕",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Premium CSS ───────────────────────────────────────────────────
+# ── CSS — clean, light, professional ─────────────────────────────
 st.markdown("""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-  /* ── Global ─────────────────────────────────── */
-  html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-  .stApp {
-    background: linear-gradient(135deg, #070d1a 0%, #0b1629 50%, #060e1c 100%);
-    color: #e2e8f0;
+  html, body, [class*="css"] {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
-  /* ── Header ─────────────────────────────────── */
-  .mg-header {
-    text-align: center;
-    padding: 2rem 0 1.5rem;
-  }
-  .mg-title {
-    font-size: 2.6rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, #00d4ff 0%, #7c4dff 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    letter-spacing: -0.5px;
-    margin-bottom: 0.3rem;
-  }
-  .mg-subtitle {
-    font-size: 0.95rem;
-    color: #64748b;
-    font-weight: 400;
-  }
+  /* ── Background ─────────────────────────────────────────────── */
+  .stApp { background: #f7f8fa; }
 
-  /* ── Chat messages ───────────────────────────── */
-  .chat-wrap { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem; }
+  /* ── Hide default Streamlit chrome ──────────────────────────── */
+  #MainMenu, footer, header { visibility: hidden; }
 
-  .msg-user {
-    align-self: flex-end;
-    max-width: 78%;
-    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-    color: #fff;
-    padding: 0.85rem 1.1rem;
-    border-radius: 18px 18px 4px 18px;
-    font-size: 0.92rem;
-    line-height: 1.55;
-    box-shadow: 0 4px 15px rgba(37,99,235,0.3);
+  /* ── Top bar ─────────────────────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 1.1rem 0 1.4rem;
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 1.5rem;
   }
-  .msg-user .label { font-size: 0.72rem; opacity: 0.75; margin-bottom: 0.35rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-
-  .msg-bot {
-    align-self: flex-start;
-    max-width: 82%;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(0,212,255,0.15);
-    color: #e2e8f0;
-    padding: 0.9rem 1.1rem;
-    border-radius: 18px 18px 18px 4px;
-    font-size: 0.92rem;
-    line-height: 1.6;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    backdrop-filter: blur(10px);
-  }
-  .msg-bot .label { font-size: 0.72rem; color: #00d4ff; margin-bottom: 0.35rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-
-  /* ── RAG context box ─────────────────────────── */
-  .rag-context {
-    background: rgba(124,77,255,0.08);
-    border: 1px solid rgba(124,77,255,0.25);
+  .topbar-logo {
+    width: 38px; height: 38px;
+    background: #1d4ed8;
     border-radius: 10px;
-    padding: 0.75rem 1rem;
-    font-size: 0.8rem;
-    color: #a78bfa;
-    margin-top: 0.5rem;
-    line-height: 1.5;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; color: white; flex-shrink: 0;
   }
-  .rag-label { font-weight: 600; color: #7c4dff; margin-bottom: 0.4rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
-
-  /* ── Sidebar ─────────────────────────────────── */
-  [data-testid="stSidebar"] {
-    background: rgba(10,14,26,0.95) !important;
-    border-right: 1px solid rgba(255,255,255,0.06) !important;
+  .topbar-name {
+    font-size: 1.15rem; font-weight: 700;
+    color: #111827; letter-spacing: -0.3px;
   }
-  .sidebar-section { margin-bottom: 1.5rem; }
-  .sidebar-title { font-size: 0.72rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.6rem; }
-
-  /* ── Badge chips ─────────────────────────────── */
-  .badge {
-    display: inline-block;
-    padding: 0.2rem 0.6rem;
-    border-radius: 100px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    margin-right: 0.3rem;
+  .topbar-sub {
+    font-size: 0.78rem; color: #6b7280;
+    font-weight: 400; margin-top: 1px;
   }
-  .badge-new  { background: rgba(0,230,118,0.15); color: #00e676; border: 1px solid rgba(0,230,118,0.3); }
-  .badge-rag  { background: rgba(124,77,255,0.15); color: #7c4dff; border: 1px solid rgba(124,77,255,0.3); }
-  .badge-gpu  { background: rgba(255,152,0,0.15); color: #ff9800; border: 1px solid rgba(255,152,0,0.3); }
-
-  /* ── Disclaimer ──────────────────────────────── */
-  .disclaimer {
-    background: rgba(255,152,0,0.08);
-    border: 1px solid rgba(255,152,0,0.2);
-    border-radius: 10px;
-    padding: 0.75rem 1rem;
-    font-size: 0.78rem;
-    color: #fbbf24;
-    line-height: 1.5;
+  .topbar-spacer { flex: 1; }
+  .topbar-badge {
+    font-size: 0.7rem; font-weight: 600;
+    background: #eff6ff; color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    padding: 3px 10px; border-radius: 20px;
   }
 
-  /* ── Latency badge ───────────────────────────── */
-  .latency-badge {
-    font-size: 0.72rem;
-    color: #475569;
-    margin-top: 0.4rem;
+  /* ── Status row ──────────────────────────────────────────────── */
+  .status-row {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    background: #fff; border: 1px solid #e5e7eb;
+    border-radius: 8px; padding: 5px 12px;
+    font-size: 0.75rem; color: #374151; font-weight: 500;
+  }
+  .status-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+  .dot-green  { background:#22c55e; }
+  .dot-blue   { background:#3b82f6; }
+  .dot-amber  { background:#f59e0b; }
+  .dot-gray   { background:#9ca3af; }
+
+  /* ── Chat container ──────────────────────────────────────────── */
+  .chat-area {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    min-height: 320px;
+    margin-bottom: 1rem;
   }
 
-  /* ── Empty state ─────────────────────────────── */
+  /* ── Empty state ─────────────────────────────────────────────── */
   .empty-state {
     text-align: center;
-    padding: 4rem 2rem;
-    color: #334155;
+    padding: 3.5rem 1.5rem;
   }
-  .empty-state .icon { font-size: 4rem; margin-bottom: 1rem; }
-  .empty-state p { font-size: 1rem; }
+  .empty-icon { font-size: 2.4rem; margin-bottom: 1rem; }
+  .empty-title { font-size: 1rem; font-weight: 600; color: #111827; margin-bottom: 0.4rem; }
+  .empty-sub { font-size: 0.83rem; color: #6b7280; line-height: 1.6; }
 
-  /* ── Example chips ───────────────────────────── */
-  .example-label { font-size: 0.75rem; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem; }
+  /* ── Messages ────────────────────────────────────────────────── */
+  .msg + .msg { margin-top: 1.1rem; }
 
-  /* ── Scrollbar ───────────────────────────────── */
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+  .msg-user {
+    display: flex; justify-content: flex-end;
+  }
+  .msg-user-bubble {
+    max-width: 72%;
+    background: #1d4ed8;
+    color: #fff;
+    padding: 0.7rem 1rem;
+    border-radius: 16px 16px 4px 16px;
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
 
-  /* ── Streamlit overrides ─────────────────────── */
-  .stTextArea textarea { background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(0,212,255,0.2) !important; color: #e2e8f0 !important; border-radius: 12px !important; font-family: 'Inter', sans-serif !important; }
-  .stTextArea textarea:focus { border-color: #00d4ff !important; box-shadow: 0 0 0 2px rgba(0,212,255,0.15) !important; }
-  .stButton > button { border-radius: 10px !important; font-weight: 600 !important; transition: all 0.2s !important; }
-  div[data-testid="stFormSubmitButton"] > button { background: linear-gradient(135deg, #1d4ed8, #7c4dff) !important; color: white !important; border: none !important; font-size: 0.9rem !important; padding: 0.6rem 1.5rem !important; }
-  div[data-testid="stFormSubmitButton"] > button:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(37,99,235,0.4) !important; }
-  .stSelectbox [data-baseweb="select"] { background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.1) !important; }
-  .stSlider [data-testid="stSlider"] label { color: #94a3b8 !important; }
-  [data-testid="stMetricValue"] { color: #00d4ff !important; font-weight: 700 !important; }
+  .msg-bot { display: flex; gap: 10px; }
+  .msg-bot-avatar {
+    width: 30px; height: 30px; flex-shrink: 0;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem; margin-top: 2px;
+  }
+  .msg-bot-bubble {
+    flex: 1;
+    background: #f9fafb;
+    border: 1px solid #f3f4f6;
+    border-radius: 4px 16px 16px 16px;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: #111827;
+  }
+  .msg-bot-name {
+    font-size: 0.7rem; font-weight: 600;
+    color: #1d4ed8; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-bottom: 0.35rem;
+  }
+  .msg-meta {
+    font-size: 0.68rem; color: #9ca3af;
+    margin-top: 0.45rem;
+  }
+
+  /* ── RAG reference box ───────────────────────────────────────── */
+  .rag-box {
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 6px 6px 0;
+    padding: 0.6rem 0.8rem;
+    margin-top: 0.6rem;
+    font-size: 0.75rem;
+    color: #4b5563;
+    line-height: 1.5;
+  }
+  .rag-box-title {
+    font-size: 0.68rem; font-weight: 600;
+    color: #3b82f6; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-bottom: 0.3rem;
+  }
+
+  /* ── Input area ──────────────────────────────────────────────── */
+  .input-area {
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    padding: 0.1rem;
+    margin-bottom: 0.8rem;
+    transition: border-color 0.15s;
+  }
+  .input-area:focus-within { border-color: #3b82f6; }
+
+  .stTextArea textarea {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    color: #111827 !important;
+    font-size: 0.9rem !important;
+    font-family: 'Inter', sans-serif !important;
+    resize: none !important;
+  }
+
+  /* ── Buttons ─────────────────────────────────────────────────── */
+  div[data-testid="stFormSubmitButton"] > button {
+    background: #1d4ed8 !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    padding: 0.55rem 1.5rem !important;
+    transition: background 0.15s !important;
+  }
+  div[data-testid="stFormSubmitButton"] > button:hover {
+    background: #1e40af !important;
+  }
+
+  .stButton > button {
+    background: #fff !important;
+    color: #374151 !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    transition: all 0.15s !important;
+  }
+  .stButton > button:hover {
+    border-color: #9ca3af !important;
+    background: #f9fafb !important;
+  }
+
+  /* ── Example chips ───────────────────────────────────────────── */
+  .chip-label {
+    font-size: 0.72rem; font-weight: 600;
+    color: #9ca3af; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 0.5rem;
+  }
+
+  /* ── Disclaimer ──────────────────────────────────────────────── */
+  .disclaimer-bar {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.75rem;
+    color: #92400e;
+    line-height: 1.5;
+    margin-top: 0.8rem;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────────────── */
+  [data-testid="stSidebar"] {
+    background: #fff !important;
+    border-right: 1px solid #e5e7eb !important;
+  }
+  [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: #374151;
+  }
+  .sb-section { margin-bottom: 1.5rem; }
+  .sb-label {
+    font-size: 0.68rem; font-weight: 600;
+    color: #9ca3af; text-transform: uppercase;
+    letter-spacing: 0.8px; margin-bottom: 0.6rem;
+    display: block;
+  }
+  .sb-divider { border: none; border-top: 1px solid #f3f4f6; margin: 1.1rem 0; }
+
+  /* ── Streamlit widget overrides ──────────────────────────────── */
+  .stSelectbox [data-baseweb="select"] div {
+    background: #f9fafb !important;
+    border-color: #e5e7eb !important;
+    color: #111827 !important;
+  }
+  [data-testid="stSlider"] label { color: #374151 !important; font-size: 0.82rem !important; }
+  [data-testid="stMetricValue"] { color: #111827 !important; font-weight: 600 !important; }
+  [data-testid="stMetricLabel"] { color: #6b7280 !important; font-size: 0.8rem !important; }
+  .stToggle label { color: #374151 !important; font-size: 0.85rem !important; }
+  .stSpinner { color: #1d4ed8 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ── Model registry ────────────────────────────────────────────────
 MODELS = {
-    "🆕 Phi-3 Mini QLoRA": {
-        "model_id":   "Shriyanshml/phi3-mini-qlora-mediguide",
-        "base":       "microsoft/Phi-3-mini-4k-instruct",
-        "type":       "phi3",
-        "desc":       "Phi-3 Mini 3.8B · QLoRA · 2,000 MedQuAD examples",
-        "quantized":  True,
+    "Phi-3 Mini QLoRA (Recommended)": {
+        "model_id":  "Shriyanshml/phi3-mini-qlora-mediguide",
+        "base":      "microsoft/Phi-3-mini-4k-instruct",
+        "type":      "phi3",
+        "desc":      "3.8B · QLoRA · 2,000 NIH MedQuAD samples · Clinical BERTScore 0.94",
+        "quantized": True,
     },
     "Falcon-7B QLoRA": {
         "model_id":  "TestCase1/falcon-7b-qlora-chat-medical-bot",
         "base":      "tiiuae/falcon-7b",
         "type":      "falcon",
-        "desc":      "Falcon 7B · QLoRA · best original baseline",
+        "desc":      "7B · QLoRA · earlier baseline",
         "quantized": True,
     },
     "Falcon-7B LoRA": {
         "model_id":  "TestCase1/falcon-7b-lora-chat-medical-bot",
         "base":      "tiiuae/falcon-7b",
         "type":      "falcon",
-        "desc":      "Falcon 7B · LoRA BF16 · fast inference",
+        "desc":      "7B · LoRA BF16 · fastest inference",
         "quantized": False,
     },
 }
 
 SYSTEM_PROMPT = (
-    "You are MEDIGUIDE, a knowledgeable medical assistant trained on "
+    "You are MediGuide, a medical information assistant trained on "
     "authoritative NIH sources. Provide accurate, evidence-based answers "
-    "to medical questions in a clear, empathetic tone. Always end your "
-    "response with a brief disclaimer that this information is educational "
-    "and patients should consult a qualified healthcare professional."
+    "to medical questions in clear, plain language. Always end with a brief "
+    "note that this information is educational and the user should consult "
+    "a qualified healthcare professional for personal medical decisions."
 )
 
 
 # ── Cached loaders ────────────────────────────────────────────────
-
 @st.cache_resource(show_spinner=False)
 def load_model(model_key: str):
-    """Load model + tokenizer. Cached per model key."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     from peft import PeftConfig, PeftModel
 
-    cfg_meta = MODELS[model_key]
-    model_id = cfg_meta["model_id"]
+    cfg = MODELS[model_key]
+
+    if torch.cuda.is_available():
+        dev, dtype = "cuda", torch.float16
+    elif torch.backends.mps.is_available():
+        dev, dtype = "mps", torch.float16
+    else:
+        dev, dtype = "cpu", torch.float32
 
     bnb = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-    ) if cfg_meta["quantized"] else None
-
-        # Detect best local device: MPS (Apple Silicon) > CUDA > CPU
-        import torch
-        if torch.cuda.is_available():
-            dev = "cuda"
-            dtype_fallback = torch.float16
-        elif torch.backends.mps.is_available():
-            dev = "mps"
-            dtype_fallback = torch.float16
-        else:
-            dev = "cpu"
-            dtype_fallback = torch.float32
+        bnb_4bit_compute_dtype=dtype,
+    ) if cfg["quantized"] and dev == "cuda" else None
 
     try:
-        peft_cfg = PeftConfig.from_pretrained(model_id)
+        peft_cfg = PeftConfig.from_pretrained(cfg["model_id"])
         base_id  = peft_cfg.base_model_name_or_path
-
-        kwargs = dict(
-            return_dict=True,
-            device_map={"" : dev},  # explicit map avoids needing accelerate on local
-            # trust_remote_code removed — Phi-3 is natively supported in transformers 4.40+
-        )
-        if bnb and dev == "cuda":
+        kwargs   = dict(device_map={"": dev}, return_dict=True)
+        if bnb:
             kwargs["quantization_config"] = bnb
         else:
-            kwargs["dtype"] = dtype_fallback  # fp16 on MPS/CUDA, fp32 on CPU
-
-        if cfg_meta["type"] == "phi3":
+            kwargs["torch_dtype"] = dtype
+        if cfg["type"] == "phi3":
             kwargs["attn_implementation"] = "eager"
-
         model = AutoModelForCausalLM.from_pretrained(base_id, **kwargs)
-        model = PeftModel.from_pretrained(model, model_id, device_map={"" : dev})
+        model = PeftModel.from_pretrained(model, cfg["model_id"], device_map={"": dev})
         tok   = AutoTokenizer.from_pretrained(base_id)
-        tok.pad_token = tok.unk_token if cfg_meta["type"] == "phi3" else tok.eos_token
+        tok.pad_token = tok.unk_token if cfg["type"] == "phi3" else tok.eos_token
         return model, tok, None
     except Exception as e:
         return None, None, str(e)
@@ -263,7 +346,6 @@ def load_model(model_key: str):
 
 @st.cache_resource(show_spinner=False)
 def load_retriever():
-    """Load RAG retriever (lazy)."""
     try:
         from rag.retriever import MedRAGRetriever
         r = MedRAGRetriever(index_dir=str(ROOT / "rag" / "index"))
@@ -273,23 +355,21 @@ def load_retriever():
 
 
 # ── Inference ─────────────────────────────────────────────────────
-
 def build_prompt(question: str, model_type: str, context: str = "") -> str:
     if model_type == "phi3":
-        user_msg = f"{context}\n\nQuestion: {question}" if context else question
+        user_msg = f"[Context from NIH MedQuAD]\n{context}\n\nQuestion: {question}" if context else question
         return (
             f"<|system|>\n{SYSTEM_PROMPT}<|end|>\n"
             f"<|user|>\n{user_msg}<|end|>\n"
             f"<|assistant|>\n"
         )
-    else:
-        q = f"{context}\n\nQuestion: {question}" if context else question
-        return f": {q}?\n: "
+    q = f"{context}\n\nQuestion: {question}" if context else question
+    return f": {q}?\n: "
 
 
-def generate(model, tokenizer, prompt: str, max_tokens: int, temperature: float, top_p: float) -> str:
+def generate(model, tokenizer, prompt, max_tokens, temperature, top_p) -> str:
     import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = next(model.parameters()).device
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
     with torch.no_grad():
         out = model.generate(
@@ -299,8 +379,7 @@ def generate(model, tokenizer, prompt: str, max_tokens: int, temperature: float,
             top_p=top_p,
             do_sample=True,
             pad_token_id=tokenizer.eos_token_id,
-            repetition_penalty=1.2,
-            no_repeat_ngram_size=3,
+            repetition_penalty=1.1,
         )
     return tokenizer.decode(
         out[0][inputs.input_ids.shape[1]:], skip_special_tokens=True
@@ -308,58 +387,43 @@ def generate(model, tokenizer, prompt: str, max_tokens: int, temperature: float,
 
 
 # ── Sidebar ───────────────────────────────────────────────────────
-
 with st.sidebar:
-    st.markdown('<div class="mg-header"><span class="mg-title" style="font-size:1.4rem">🏥 MEDIGUIDE</span></div>', unsafe_allow_html=True)
-    st.markdown("---")
+    st.markdown('<div style="font-size:1.05rem;font-weight:700;color:#111827;padding:0.5rem 0 1rem">⚕ MediGuide</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="sb-divider">', unsafe_allow_html=True)
 
-    st.markdown('<div class="sidebar-title">Model</div>', unsafe_allow_html=True)
-    selected_model = st.selectbox(
-        "Select model",
-        list(MODELS.keys()),
-        index=0,
-        label_visibility="collapsed",
-    )
+    st.markdown('<span class="sb-label">Model</span>', unsafe_allow_html=True)
+    selected_model = st.selectbox("Model", list(MODELS.keys()), index=0, label_visibility="collapsed")
     meta = MODELS[selected_model]
-    st.markdown(f'<p style="font-size:0.75rem;color:#475569;margin-top:0.3rem">{meta["desc"]}</p>', unsafe_allow_html=True)
-    st.markdown("---")
+    st.caption(meta["desc"])
 
-    st.markdown('<div class="sidebar-title">RAG Settings</div>', unsafe_allow_html=True)
-    use_rag = st.toggle("Enable RAG", value=True, help="Retrieve relevant MedQuAD references before generating")
-    top_k   = st.slider("Retrieved references", 1, 5, 3, disabled=not use_rag)
-    st.markdown("---")
+    st.markdown('<hr class="sb-divider">', unsafe_allow_html=True)
+    st.markdown('<span class="sb-label">Retrieval</span>', unsafe_allow_html=True)
+    use_rag = st.toggle("Enable RAG", value=True, help="Retrieve relevant NIH passages before generating")
+    top_k   = st.slider("References retrieved", 1, 5, 3, disabled=not use_rag)
 
-    st.markdown('<div class="sidebar-title">Generation</div>', unsafe_allow_html=True)
-    max_tokens  = st.slider("Max tokens", 50, 300, 150)
+    st.markdown('<hr class="sb-divider">', unsafe_allow_html=True)
+    st.markdown('<span class="sb-label">Generation</span>', unsafe_allow_html=True)
+    max_tokens  = st.slider("Max tokens", 50, 400, 200)
     temperature = st.slider("Temperature", 0.1, 1.0, 0.7, step=0.05)
     top_p       = st.slider("Top-p", 0.5, 1.0, 0.9, step=0.05)
-    st.markdown("---")
 
+    st.markdown('<hr class="sb-divider">', unsafe_allow_html=True)
     import torch
     if torch.cuda.is_available():
-        gpu_name = torch.cuda.get_device_name(0)
-        gpu_mem  = torch.cuda.get_device_properties(0).total_memory / 1e9
-        st.markdown(f'<div class="badge badge-gpu">GPU</div><span style="font-size:0.78rem;color:#94a3b8">{gpu_name} ({gpu_mem:.0f}GB)</span>', unsafe_allow_html=True)
+        gname = torch.cuda.get_device_name(0)
+        gmem  = torch.cuda.get_device_properties(0).total_memory / 1e9
+        st.caption(f"🟢 GPU · {gname} ({gmem:.0f} GB)")
     else:
-        st.warning("⚠️ No GPU — inference will be slow", icon="🐢")
+        st.caption("🟡 Running on CPU — responses will be slow")
 
-    st.markdown("---")
-    st.markdown("""
-    <div class="disclaimer">
-    ⚠️ <strong>Disclaimer</strong><br>
-    For educational purposes only. Always consult a qualified healthcare professional for medical advice.
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ── Header ────────────────────────────────────────────────────────
-
-st.markdown("""
-<div class="mg-header">
-  <div class="mg-title">🏥 MEDIGUIDE</div>
-  <div class="mg-subtitle">Medical AI · Fine-tuned Phi-3 Mini · RAG over 16,000 NIH Q&amp;A pairs</div>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown('<hr class="sb-divider">', unsafe_allow_html=True)
+    st.markdown(
+        '<p style="font-size:0.72rem;color:#6b7280;line-height:1.6">'
+        '⚕ MediGuide is a research project trained on NIH MedQuAD. '
+        'It is not a medical device and must not replace professional clinical advice.'
+        '</p>',
+        unsafe_allow_html=True
+    )
 
 
 # ── Session state ─────────────────────────────────────────────────
@@ -367,128 +431,161 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "current_model" not in st.session_state:
     st.session_state.current_model = selected_model
-
 if st.session_state.current_model != selected_model:
     st.session_state.messages = []
     st.session_state.current_model = selected_model
 
 
 # ── Load model ────────────────────────────────────────────────────
-with st.spinner(f"Loading {selected_model}…"):
+with st.spinner("Loading model…"):
     model, tokenizer, load_err = load_model(selected_model)
-
 retriever, rag_err = load_retriever()
 
-if load_err:
-    st.error(f"⚠️ Model unavailable: `{load_err}`\n\nMake sure you have run the Kaggle training and the model is pushed to HF Hub.")
-    model_ready = False
-else:
-    model_ready = True
-
-rag_ready = retriever is not None and retriever.is_available
+model_ready = load_err is None
+rag_ready   = retriever is not None and getattr(retriever, "is_available", False)
 
 
-# ── Status bar ───────────────────────────────────────────────────
-col_a, col_b, col_c = st.columns(3)
-with col_a:
-    st.metric("Model", "✅ Loaded" if model_ready else "❌ Unavailable")
-with col_b:
-    st.metric("RAG Index", f"✅ {retriever.num_documents:,} docs" if rag_ready else "⚠️ Not found")
-with col_c:
-    rag_status = ("ON · Retrieving" if (use_rag and rag_ready) else "OFF")
-    st.metric("RAG Status", rag_status)
+# ── Top bar ───────────────────────────────────────────────────────
+st.markdown("""
+<div class="topbar">
+  <div class="topbar-logo">⚕</div>
+  <div>
+    <div class="topbar-name">MediGuide</div>
+    <div class="topbar-sub">NIH MedQuAD · Phi-3 Mini QLoRA · RAG</div>
+  </div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-badge">Research Preview</div>
+</div>
+""", unsafe_allow_html=True)
 
 
-# ── Chat display ──────────────────────────────────────────────────
-st.markdown('<div class="chat-wrap">', unsafe_allow_html=True)
+# ── Status row ────────────────────────────────────────────────────
+model_dot  = "dot-green" if model_ready else "dot-amber"
+model_txt  = "Model loaded" if model_ready else "Model unavailable"
+rag_dot    = "dot-blue" if rag_ready else "dot-gray"
+rag_txt    = f"RAG · {retriever.num_documents:,} passages" if rag_ready else "RAG index not found"
+mode_txt   = "RAG enabled" if (use_rag and rag_ready) else "Direct generation"
+mode_dot   = "dot-blue" if (use_rag and rag_ready) else "dot-gray"
+
+st.markdown(f"""
+<div class="status-row">
+  <div class="status-pill"><div class="status-dot {model_dot}"></div>{model_txt}</div>
+  <div class="status-pill"><div class="status-dot {rag_dot}"></div>{rag_txt}</div>
+  <div class="status-pill"><div class="status-dot {mode_dot}"></div>{mode_txt}</div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ── Chat area ─────────────────────────────────────────────────────
+st.markdown('<div class="chat-area">', unsafe_allow_html=True)
 
 if not st.session_state.messages:
     st.markdown("""
-    <div class="empty-state">
-      <div class="icon">💬</div>
-      <p>Ask any medical question below.<br><span style="color:#475569;font-size:0.85rem">RAG will retrieve relevant references from 16k+ NIH-sourced Q&amp;A pairs.</span></p>
-    </div>
-    """, unsafe_allow_html=True)
+<div class="empty-state">
+  <div class="empty-icon">💬</div>
+  <div class="empty-title">Ask a medical question</div>
+  <div class="empty-sub">
+    MediGuide retrieves relevant passages from 14,782 NIH MedQuAD Q&amp;A pairs<br>
+    and generates evidence-based answers using a fine-tuned Phi-3 Mini model.
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
     if msg["role"] == "user":
         st.markdown(
-            f'<div class="msg-user"><div class="label">You</div>{msg["content"]}</div>',
+            f'<div class="msg msg-user"><div class="msg-user-bubble">{msg["content"]}</div></div>',
             unsafe_allow_html=True,
         )
     else:
         context_html = ""
         if msg.get("context"):
+            snippet = msg["context"][:400].replace("<", "&lt;").replace(">", "&gt;")
             context_html = (
-                f'<div class="rag-context">'
-                f'<div class="rag-label">📚 RAG Context Retrieved</div>'
-                f'{msg["context"][:500]}…</div>'
+                f'<div class="rag-box">'
+                f'<div class="rag-box-title">📚 Retrieved context</div>'
+                f'{snippet}…</div>'
             )
         st.markdown(
-            f'<div class="msg-bot">'
-            f'<div class="label">🏥 MEDIGUIDE</div>'
+            f'<div class="msg msg-bot">'
+            f'<div class="msg-bot-avatar">⚕</div>'
+            f'<div class="msg-bot-bubble">'
+            f'<div class="msg-bot-name">MediGuide</div>'
             f'{msg["content"]}'
             f'{context_html}'
-            f'<div class="latency-badge">⏱ {msg.get("latency", "")} · {msg.get("model", "")}</div>'
-            f'</div>',
+            f'<div class="msg-meta">⏱ {msg.get("latency","")} &nbsp;·&nbsp; {msg.get("model","")}</div>'
+            f'</div></div>',
             unsafe_allow_html=True,
         )
 
 st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ── Input form ───────────────────────────────────────────────────
+# ── Input ─────────────────────────────────────────────────────────
 with st.form("chat_form", clear_on_submit=True):
+    st.markdown('<div class="input-area">', unsafe_allow_html=True)
     user_input = st.text_area(
-        "Your question",
-        placeholder="e.g. What are the early signs of Type 2 diabetes?",
-        height=90,
+        "Question",
+        placeholder="e.g. What are the early warning signs of Type 2 diabetes?",
+        height=80,
         label_visibility="collapsed",
     )
-    submitted = st.form_submit_button("Send →", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    col1, col2 = st.columns([5, 1])
+    with col1:
+        submitted = st.form_submit_button("Send message", use_container_width=True)
+    with col2:
+        st.form_submit_button("Clear", use_container_width=True)
 
-if submitted and user_input.strip() and model_ready:
-    question = user_input.strip()
-    st.session_state.messages.append({"role": "user", "content": question})
+if submitted and user_input.strip():
+    if not model_ready:
+        st.error("Model is not available. Check your HF credentials and network connection.")
+    else:
+        question = user_input.strip()
+        st.session_state.messages.append({"role": "user", "content": question})
 
-    # RAG context
-    context = ""
-    if use_rag and rag_ready:
-        context = retriever.format_context(question, top_k)
+        context = ""
+        if use_rag and rag_ready:
+            context = retriever.format_context(question, top_k)
 
-    prompt = build_prompt(question, meta["type"], context)
+        prompt = build_prompt(question, meta["type"], context)
 
-    with st.spinner("Generating response…"):
-        t0       = time.time()
-        response = generate(model, tokenizer, prompt, max_tokens, temperature, top_p)
-        latency  = time.time() - t0
+        with st.spinner("Generating response…"):
+            t0       = time.time()
+            response = generate(model, tokenizer, prompt, max_tokens, temperature, top_p)
+            latency  = time.time() - t0
 
-    st.session_state.messages.append({
-        "role":    "bot",
-        "content": response,
-        "context": context if context else "",
-        "latency": f"{latency:.1f}s",
-        "model":   selected_model,
-    })
-    st.rerun()
+        st.session_state.messages.append({
+            "role":    "bot",
+            "content": response,
+            "context": context,
+            "latency": f"{latency:.1f}s",
+            "model":   selected_model,
+        })
+        st.rerun()
 
 
 # ── Example questions ─────────────────────────────────────────────
-st.markdown('<div class="example-label" style="margin-top:1rem">💡 Try these</div>', unsafe_allow_html=True)
-ex_cols = st.columns(3)
-examples = [
-    "What is Type 2 diabetes and how is it managed?",
-    "What are the symptoms of hypertension?",
-    "How can I reduce my risk of heart disease?",
-]
-for col, ex in zip(ex_cols, examples):
-    with col:
-        if st.button(ex, use_container_width=True):
-            st.session_state.messages.append({"role": "user", "content": ex})
-            st.rerun()
+if not st.session_state.messages:
+    st.markdown('<div class="chip-label">Suggested questions</div>', unsafe_allow_html=True)
+    examples = [
+        "What is Type 2 diabetes and how is it managed?",
+        "What are the symptoms of hypertension?",
+        "How can I reduce my risk of heart disease?",
+    ]
+    cols = st.columns(3)
+    for col, ex in zip(cols, examples):
+        with col:
+            if st.button(ex, use_container_width=True):
+                st.session_state.messages.append({"role": "user", "content": ex})
+                st.rerun()
 
-# Clear
-if st.session_state.messages:
-    if st.button("🗑️ Clear conversation", use_container_width=True):
-        st.session_state.messages = []
-        st.rerun()
+
+# ── Disclaimer ────────────────────────────────────────────────────
+st.markdown("""
+<div class="disclaimer-bar">
+  <strong>Disclaimer:</strong> MediGuide is a research project and is not a medical device.
+  Information provided is for educational purposes only. Always consult a qualified
+  healthcare professional for medical advice, diagnosis, or treatment.
+</div>
+""", unsafe_allow_html=True)
