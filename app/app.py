@@ -436,9 +436,13 @@ if st.session_state.current_model != selected_model:
     st.session_state.current_model = selected_model
 
 
-# ── Retriever (lightweight FAISS index — load eagerly, ~1-2s) ─────
-retriever, rag_err = load_retriever()
-rag_ready = retriever is not None and getattr(retriever, "is_available", False)
+# ── Retriever (check index exists on disk — don't trigger lazy load) ──
+try:
+    retriever, rag_err = load_retriever()
+    # is_available does a simple os.path.exists check — no model loading
+    rag_ready = retriever is not None and retriever.is_available
+except Exception as _e:
+    retriever, rag_err, rag_ready = None, str(_e), False
 
 # Model is NOT loaded here — it loads lazily on the first Send click.
 # This keeps the page fully responsive at startup.
@@ -459,10 +463,10 @@ st.markdown("""
 
 
 # ── Status row ────────────────────────────────────────────────────
-rag_dot  = "dot-blue" if rag_ready else "dot-gray"
-rag_txt  = f"RAG · {retriever.num_documents:,} passages" if rag_ready else "RAG index not found"
+rag_dot  = "dot-blue"  if rag_ready else "dot-gray"
+rag_txt  = "RAG index ready" if rag_ready else "RAG index not found locally"
 mode_txt = "RAG enabled" if (use_rag and rag_ready) else "Direct generation"
-mode_dot = "dot-blue" if (use_rag and rag_ready) else "dot-gray"
+mode_dot = "dot-blue"  if (use_rag and rag_ready) else "dot-gray"
 
 st.markdown(f"""
 <div class="status-row">
@@ -548,7 +552,10 @@ if submitted and user_input.strip():
 
     context = ""
     if use_rag and rag_ready:
-        context = retriever.format_context(question, top_k)
+        try:
+            context = retriever.format_context(question, top_k)
+        except Exception:
+            context = ""  # RAG failed — fall back to direct generation silently
 
     prompt = build_prompt(question, meta["type"], context)
 
