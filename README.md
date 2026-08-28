@@ -2,6 +2,7 @@
 
 **A domain-adapted medical question-answering system built on Phi-3 Mini, fine-tuned with QLoRA and augmented with Retrieval-Augmented Generation (RAG) over NIH MedQuAD.**
 
+[![Live Demo](https://img.shields.io/badge/🤗%20Space-Shriyanshml%2Fmediguide-orange)](https://huggingface.co/spaces/Shriyanshml/mediguide)
 [![Model](https://img.shields.io/badge/🤗%20Model-Shriyanshml%2Fphi3--mini--qlora--mediguide-blue)](https://huggingface.co/Shriyanshml/phi3-mini-qlora-mediguide)
 [![RAG Index](https://img.shields.io/badge/🤗%20Dataset-Shriyanshml%2Fmediguide--rag--index-green)](https://huggingface.co/datasets/Shriyanshml/mediguide-rag-index)
 [![GitHub](https://img.shields.io/badge/GitHub-mananms21%2FMediguide-black)](https://github.com/mananms21/Mediguide-)
@@ -225,12 +226,12 @@ Key training decisions:
 
 ## HF Spaces Deployment
 
-The `spaces/` directory contains a Gradio app ready for one-click deployment to [Hugging Face Spaces](https://huggingface.co/spaces) (free CPU tier).
+The `spaces/` directory contains a Gradio app deployed to [Hugging Face Spaces](https://huggingface.co/spaces/Shriyanshml/mediguide) with **ZeroGPU** (free A10G tier). ZeroGPU provides GPU access on demand — inference runs in full 4-bit mode with ~11 s latency, identical to Kaggle T4 results.
 
 1. Create a new Space at [huggingface.co/new-space](https://huggingface.co/new-space)
-   - SDK: **Gradio** · Hardware: **CPU Basic (free)**
-2. Upload the three files from `spaces/`
-3. Add `HF_Token` as a Space secret
+   - SDK: **Gradio** · Hardware: **ZeroGPU (free A10G)**
+2. Push the three files from `spaces/` via git
+3. Add `HF_TOKEN` as a Space secret (Settings → Variables and secrets)
 
 ---
 

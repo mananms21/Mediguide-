@@ -584,15 +584,22 @@ All data is loaded from `evaluate/results/results.json`. The ablation table popu
 
 ## 9. Deployment
 
-### HF Spaces (Gradio, free CPU tier)
+### HF Spaces (Gradio, ZeroGPU — free A10G)
 
-The `spaces/` directory contains a standalone Gradio application. Because HF Spaces CPU Basic tier provides only 2 CPU cores and 16 GB RAM (no GPU), the app loads the model in fp32 on CPU with `device_map="cpu"`. This makes inference slower (~45 s per response on CPU) but allows completely free hosting.
+The `spaces/` directory contains a standalone Gradio application deployed at **[huggingface.co/spaces/Shriyanshml/mediguide](https://huggingface.co/spaces/Shriyanshml/mediguide)**.
 
-**To deploy:**
-1. Create a new Space at huggingface.co/new-space
-   - SDK: Gradio · Hardware: CPU Basic (free)
-2. Upload `spaces/app.py`, `spaces/requirements.txt`, `spaces/README.md`
-3. Add `HF_Token` as a Space Secret
+The Space uses **ZeroGPU** (free A10G tier), which provides GPU access on demand. The model is loaded in 4-bit NF4 mode — identical to the Kaggle training environment — giving ~11 s inference latency, matching the ablation study results.
+
+**Key deployment notes:**
+- `sdk_version: "4.44.0"` — HF Spaces ZeroGPU Docker image is pinned; upgrading via `requirements.txt` alone does not replace the pre-baked image
+- `huggingface_hub<0.26.0` — Gradio 4.44's `oauth.py` imports `HfFolder` which was removed in 0.26.0
+- `starlette<0.37.0` + `fastapi<0.110.0` — Starlette 0.37 changed `TemplateResponse`'s signature, breaking Gradio 4.44's route handler
+- A monkey-patch in `spaces/app.py` fixes a `gradio_client 0.9.0` JSON-schema bug where `pydantic v2` passes raw booleans as schema nodes, causing `TypeError: 'bool' is not iterable` in the health-check request
+
+**To deploy your own copy:**
+1. Create a new Space → SDK: **Gradio** · Hardware: **ZeroGPU (free)**
+2. Push `spaces/app.py`, `spaces/requirements.txt`, `spaces/README.md` via git
+3. Add `HF_TOKEN` as a Space Secret (Settings → Variables and secrets)
 
 ### Local (Streamlit)
 
