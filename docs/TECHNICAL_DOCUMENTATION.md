@@ -173,19 +173,12 @@ The `<|end|>` tokens are Phi-3's explicit message boundary markers. Using `<|end
 
 ### Model Selection
 
-Four fine-tuning experiments were run on Falcon-7B baselines before settling on Phi-3 Mini:
+Phi-3 Mini (3.8B) was selected as the base model for the following reasons:
 
-| Model | Method | Size | Train Ex. | Reason chosen/rejected |
-|---|---|---|---|---|
-| Falcon-7B | Prompt Tuning (BF16) | 7B | 200 | ✗ Fastest but poor quality |
-| Falcon-7B | Prompt Tuning (4-bit) | 7B | 200 | ✗ Memory efficient but limited |
-| Falcon-7B | LoRA (BF16) | 7B | 200 | ✗ Good baseline but large |
-| **Phi-3 Mini** | **QLoRA (4-bit)** | **3.8B** | **2,000** | ✅ Best quality/size/speed tradeoff |
-
-Phi-3 Mini was chosen because:
-- 3.8B parameters fit in 4-bit on a Kaggle T4 (15 GB VRAM) leaving room for gradient checkpointing
-- Microsoft trained it specifically on high-quality synthetic data, making it stronger than Falcon-7B at 3.8B despite the size difference
-- 4K context window is sufficient for medical QA (typical MedQuAD answer: 100–400 tokens)
+- **Memory efficiency:** 3.8B parameters fit in 4-bit on a Kaggle T4 (15 GB VRAM), leaving room for gradient checkpointing and LoRA adapter states
+- **Quality at size:** Microsoft trained Phi-3 Mini on high-quality synthetic and curated data, giving it stronger instruction-following than larger models trained on noisier data
+- **Context window:** 4K tokens is sufficient for medical QA (typical MedQuAD answer: 100–400 tokens)
+- **Instruct format:** Phi-3's `<|user|>` / `<|assistant|>` / `<|end|>` template is well-suited for supervised fine-tuning on QA pairs
 
 ### Quantisation (QLoRA)
 
@@ -500,10 +493,6 @@ ROUGE-1 @50tok and Lexical Precision@50 give a fair, verbosity-corrected picture
 | **Phi-3 Mini QLoRA + RAG** ★ | QLoRA + FAISS | 2,000 | **0.753** | **0.410** | **0.974** | 11.75 s |
 | **Phi-3 Mini QLoRA** | QLoRA 4-bit | 2,000 | 0.436 | 0.290 | 0.940 | 11.33 s |
 | Phi-3 Mini (zero-shot) | Base model | 0 | 0.315 | 0.195 | 0.920 | 13.74 s |
-| Falcon-7B QLoRA | QLoRA 4-bit | 200 | 0.250 | — | — | 10.94 s |
-| Falcon-7B LoRA | LoRA BF16 | 200 | 0.210 | — | — | 3.53 s |
-| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | 0.210 | — | — | 8.81 s |
-| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | 0.180 | — | — | 1.89 s |
 
 **OOD result:** On PubMedQA (research-style questions from PubMed abstracts, unseen during training), the fine-tuned model scores Clinical BERTScore F1 = **0.9186**, a gap of only 0.0215 from the in-distribution score (0.9401). This demonstrates strong generalisation to a different biomedical domain.
 

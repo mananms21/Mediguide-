@@ -122,19 +122,20 @@ class MedRAGRetriever:
             f"<|assistant|>\n"
         )
 
-    def build_falcon_prompt(
+    def build_prompt(
         self,
         question: str,
         use_rag: bool = True,
         top_k: int = 3,
     ) -> str:
         """
-        Build a Falcon-style chat prompt, optionally with RAG context.
+        Build a chat prompt, optionally with RAG context.
         """
         if use_rag and self.is_available:
             context  = self.format_context(question, top_k)
             question = f"{context}\n\nBased on the references above, answer: {question}"
         return f": {question}?\n: "
+
 
     # ── Properties ────────────────────────────────────────────────
 

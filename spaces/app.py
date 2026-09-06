@@ -15,7 +15,27 @@ import sys
 import time
 from pathlib import Path
 
+# ── Monkey-patch: fix gradio_client bool schema bug (gradio 4.44.x) ──────────
+# gradio_client/utils.py get_type() does `if "const" in schema` without
+# checking isinstance(schema, dict) first. pydantic v2 can pass a raw bool
+# (e.g. {"additionalProperties": False}) which causes TypeError at API info
+# generation time, crashing the ZeroGPU startup health-check.
+try:
+    import gradio_client.utils as _gcu
+
+    _orig_json_schema_to_python_type = _gcu._json_schema_to_python_type
+
+    def _safe_json_schema_to_python_type(schema, defs=None):
+        if not isinstance(schema, dict):
+            return "any"
+        return _orig_json_schema_to_python_type(schema, defs)
+
+    _gcu._json_schema_to_python_type = _safe_json_schema_to_python_type
+except Exception:
+    pass  # If patch fails, carry on — worst case is a non-fatal API info error
+
 import gradio as gr
+
 import numpy as np
 import torch
 
@@ -37,11 +57,11 @@ INDEX_DIR    = Path("rag_cache")
 DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
 
 SYSTEM_PROMPT = (
-    "You are MEDIGUIDE, a knowledgeable medical assistant trained on "
+    "You are MediGuide, a medical information assistant trained on "
     "authoritative NIH sources. Provide accurate, evidence-based answers "
-    "to medical questions in a clear, empathetic tone. Always conclude with "
-    "a brief disclaimer that this information is educational and that patients "
-    "should consult a qualified healthcare professional for personal medical advice."
+    "to medical questions in clear, plain language. Always conclude with "
+    "a brief note that this information is educational and the user should "
+    "consult a qualified healthcare professional for personal medical decisions."
 )
 
 DISCLAIMER = (
@@ -75,12 +95,11 @@ def _load_model():
         cfg.base_model_name_or_path,
         quantization_config=bnb,
         device_map="auto",
-        trust_remote_code=True,
         attn_implementation="eager",
     )
     model       = PeftModel.from_pretrained(model, MODEL_ID)
     model.eval()
-    tok         = AutoTokenizer.from_pretrained(cfg.base_model_name_or_path, trust_remote_code=True)
+    tok         = AutoTokenizer.from_pretrained(cfg.base_model_name_or_path)
     tok.pad_token = tok.unk_token
     _model, _tokenizer = model, tok
     print("✅ Model loaded")
@@ -208,25 +227,11 @@ def clear_chat():
 
 
 # ── Gradio UI ─────────────────────────────────────────────────────
-theme = gr.themes.Soft(
-    primary_hue=gr.themes.colors.cyan,
-    secondary_hue=gr.themes.colors.violet,
-    neutral_hue=gr.themes.colors.slate,
+theme = gr.themes.Default(
+    primary_hue="blue",
+    secondary_hue="slate",
+    neutral_hue="slate",
     font=[gr.themes.GoogleFont("Inter"), "sans-serif"],
-).set(
-    body_background_fill="linear-gradient(135deg, #070d1a 0%, #0b1629 50%, #060e1c 100%)",
-    body_text_color="#e2e8f0",
-    block_background_fill="rgba(255,255,255,0.04)",
-    block_border_color="rgba(0,212,255,0.15)",
-    block_title_text_color="#00d4ff",
-    button_primary_background_fill="linear-gradient(135deg, #1d4ed8, #7c4dff)",
-    button_primary_text_color="#ffffff",
-    button_secondary_background_fill="rgba(255,255,255,0.06)",
-    button_secondary_text_color="#e2e8f0",
-    input_background_fill="rgba(255,255,255,0.04)",
-    input_border_color="rgba(0,212,255,0.2)",
-    slider_color="#00d4ff",
-    checkbox_background_color_selected="#7c4dff",
 )
 
 EXAMPLES = [
@@ -238,24 +243,14 @@ EXAMPLES = [
     "What are the symptoms of anemia and how is it diagnosed?",
 ]
 
-with gr.Blocks(theme=theme, title="MEDIGUIDE — Medical AI Chatbot") as demo:
+with gr.Blocks(theme=theme, title="MediGuide — Medical AI") as demo:
 
     gr.HTML("""
-    <div style="text-align:center;padding:1.5rem 0 1rem">
-      <h1 style="font-size:2.2rem;font-weight:700;
-                 background:linear-gradient(135deg,#00d4ff,#7c4dff);
-                 -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-                 background-clip:text;margin-bottom:0.3rem">
-        🏥 MEDIGUIDE
-      </h1>
-      <p style="color:#64748b;font-size:0.95rem">
-        Fine-tuned Phi-3 Mini · QLoRA · RAG over 16,000+ NIH Q&amp;A pairs
-      </p>
-      <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:0.7rem;flex-wrap:wrap">
-        <span style="background:rgba(0,212,255,0.12);color:#00d4ff;border:1px solid rgba(0,212,255,0.3);padding:0.2rem 0.7rem;border-radius:100px;font-size:0.72rem;font-weight:600">Phi-3 Mini 3.8B</span>
-        <span style="background:rgba(124,77,255,0.12);color:#a78bfa;border:1px solid rgba(124,77,255,0.3);padding:0.2rem 0.7rem;border-radius:100px;font-size:0.72rem;font-weight:600">QLoRA 4-bit</span>
-        <span style="background:rgba(0,230,118,0.12);color:#00e676;border:1px solid rgba(0,230,118,0.3);padding:0.2rem 0.7rem;border-radius:100px;font-size:0.72rem;font-weight:600">FAISS RAG</span>
-        <span style="background:rgba(255,152,0,0.12);color:#ff9800;border:1px solid rgba(255,152,0,0.3);padding:0.2rem 0.7rem;border-radius:100px;font-size:0.72rem;font-weight:600">NIH Sources</span>
+    <div style="border-bottom:1px solid #e5e7eb;padding:1rem 0 1.2rem;margin-bottom:0.5rem;display:flex;align-items:center;gap:12px">
+      <div style="width:38px;height:38px;background:#1d4ed8;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:white;flex-shrink:0">⚕</div>
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:#111827;letter-spacing:-0.3px">MediGuide</div>
+        <div style="font-size:0.78rem;color:#6b7280">Fine-tuned Phi-3 Mini · QLoRA · RAG over 14,782 NIH MedQuAD pairs · ZeroGPU</div>
       </div>
     </div>
     """)
@@ -267,7 +262,7 @@ with gr.Blocks(theme=theme, title="MEDIGUIDE — Medical AI Chatbot") as demo:
                 label="Conversation",
                 height=480,
                 bubble_full_width=False,
-                avatar_images=(None, "https://em-content.zobj.net/source/apple/354/hospital_1f3e5.png"),
+                type="tuples",
                 show_copy_button=True,
             )
 
@@ -308,12 +303,12 @@ with gr.Blocks(theme=theme, title="MEDIGUIDE — Medical AI Chatbot") as demo:
                 )
 
             gr.HTML("""
-            <div style="background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.2);
-                        border-radius:10px;padding:0.75rem 1rem;font-size:0.78rem;color:#fbbf24;
-                        line-height:1.5;margin-top:1rem">
-              ⚠️ <strong>Medical Disclaimer</strong><br>
-              This chatbot is for informational &amp; educational purposes only.
-              Always consult a qualified healthcare professional for diagnosis and treatment.
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+                        padding:0.75rem 1rem;font-size:0.78rem;color:#92400e;line-height:1.5;margin-top:1rem">
+              <strong>Medical Disclaimer</strong><br>
+              This chatbot is for educational and informational purposes only.
+              It is not a medical device. Always consult a qualified healthcare
+              professional for diagnosis and treatment.
             </div>
             """)
 
@@ -333,14 +328,14 @@ with gr.Blocks(theme=theme, title="MEDIGUIDE — Medical AI Chatbot") as demo:
 
     # ── Footer ────────────────────────────────────────────────────
     gr.HTML("""
-    <div style="text-align:center;margin-top:2rem;padding:1rem;
-                border-top:1px solid rgba(255,255,255,0.06);
-                font-size:0.75rem;color:#334155">
-      MEDIGUIDE · Phi-3 Mini QLoRA · Fine-tuned on MedQuAD (NIH) ·
+    <div style="text-align:center;margin-top:1.5rem;padding:0.75rem;
+                border-top:1px solid #e5e7eb;
+                font-size:0.73rem;color:#9ca3af">
+      MediGuide &nbsp;·&nbsp; Phi-3 Mini QLoRA &nbsp;·&nbsp; Clinical BERTScore 0.974 (+RAG) &nbsp;·&nbsp;
       <a href="https://huggingface.co/Shriyanshml/phi3-mini-qlora-mediguide"
-         style="color:#00d4ff;text-decoration:none" target="_blank">Model on HF Hub</a> ·
+         style="color:#1d4ed8;text-decoration:none" target="_blank">Model</a> &nbsp;·&nbsp;
       <a href="https://github.com/mananms21/Mediguide-"
-         style="color:#7c4dff;text-decoration:none" target="_blank">GitHub</a>
+         style="color:#1d4ed8;text-decoration:none" target="_blank">GitHub</a>
     </div>
     """)
 

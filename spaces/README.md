@@ -1,14 +1,14 @@
 ---
-title: MEDIGUIDE — Medical AI Chatbot
-emoji: 🏥
+title: MediGuide — Medical AI Chatbot
+emoji: ⚕
 colorFrom: blue
-colorTo: teal
+colorTo: indigo
 sdk: gradio
 sdk_version: "4.44.0"
 app_file: app.py
 pinned: true
 license: mit
-short_description: Fine-tuned Phi-3 Mini medical chatbot with RAG over MedQuAD
+short_description: Phi-3 Mini QLoRA medical chatbot with RAG
 tags:
   - medical
   - chatbot
@@ -17,26 +17,29 @@ tags:
   - peft
   - rag
   - phi3
+  - zerogpu
 ---
 
-# 🏥 MEDIGUIDE — Medical AI Chatbot
+# ⚕ MediGuide — Medical AI Chatbot
 
 A fine-tuned **Phi-3 Mini (3.8B)** medical chatbot with **Retrieval-Augmented Generation (RAG)**
-over the MedQuAD dataset (16,000+ NIH-sourced Q&A pairs).
+over 14,782 NIH MedQuAD Q&A pairs.
 
-## Features
+## Ablation Results
 
-- **QLoRA Fine-tuned** on 2,000 MedQuAD examples using 4-bit NF4 quantization
-- **RAG Pipeline** via FAISS + SentenceTransformers — retrieves relevant references before answering
-- **Medical Disclaimer** on all responses (HIPAA-equivalent standards)
-
-## Models Compared
-
-| Method | ROUGE-1 | Perplexity | Latency |
+| Condition | Clinical BERTScore | ROUGE-1 @50tok | NLI Contradiction |
 |---|---|---|---|
-| Phi-3 Mini QLoRA (this app) | TBD | TBD | ~5s |
-| Falcon-7B QLoRA (baseline) | 0.25 | 3.45 | 10.94s |
+| Zero-shot | 0.9203 | 0.1949 | 0.1007 |
+| Fine-tuned | 0.9401 | 0.2903 | 0.2173 |
+| **Fine-tuned + RAG** ★ | **0.9740** | **0.4104** | **0.0780** |
+| OOD (PubMedQA) | 0.9186 | 0.2392 | 0.1374 |
 
 ## Tech Stack
 
-`microsoft/Phi-3-mini-4k-instruct` · `PEFT` · `FAISS` · `SentenceTransformers` · `Gradio`
+`microsoft/Phi-3-mini-4k-instruct` · `QLoRA 4-bit NF4` · `PEFT` · `FAISS` · `SentenceTransformers` · `Gradio` · `ZeroGPU`
+
+## Links
+
+- 🤗 [Model](https://huggingface.co/Shriyanshml/phi3-mini-qlora-mediguide)
+- 📦 [RAG Index](https://huggingface.co/datasets/Shriyanshml/mediguide-rag-index)
+- 💻 [GitHub](https://github.com/mananms21/Mediguide-)

@@ -30,9 +30,7 @@ Mediguide/
 │       └── Evaluation.py       # Ablation dashboard (4 conditions × 5 metrics)
 │
 ├── training/                   # Training scripts (all GPU experiments)
-│   ├── train_qlora_phi3.py     # ★ Primary: Phi-3 Mini QLoRA (Kaggle T4)
-│   ├── train_lora_falcon.py    # Baseline: Falcon-7B LoRA (BF16)
-│   └── train_prompt_tuning_falcon.py  # Baseline: Falcon-7B Prompt Tuning
+│   └── train_qlora_phi3.py     # Phi-3 Mini QLoRA (Kaggle T4)
 │
 ├── rag/                        # Retrieval-Augmented Generation module
 │   ├── __init__.py
@@ -198,12 +196,8 @@ results = run_all_clinical_metrics(
 | **Phi-3 Mini QLoRA + RAG** ★ | QLoRA + FAISS | 2,000 | **0.753** | **0.410** | **0.974** | 11.75 s |
 | **Phi-3 Mini QLoRA** | QLoRA 4-bit | 2,000 | 0.436 | 0.290 | 0.940 | 11.33 s |
 | Phi-3 Mini (zero-shot) | Base model | 0 | 0.315 | 0.195 | 0.920 | 13.74 s |
-| Falcon-7B QLoRA | QLoRA 4-bit | 200 | 0.250 | — | — | 10.94 s |
-| Falcon-7B LoRA | LoRA BF16 | 200 | 0.210 | — | — | 3.53 s |
-| Falcon-7B Prompt (4-bit) | Prompt Tuning | 200 | 0.210 | — | — | 8.81 s |
-| Falcon-7B Prompt (BF16) | Prompt Tuning | 200 | 0.180 | — | — | 1.89 s |
 
-Falcon baselines have higher full-prediction ROUGE-1 because they generate shorter, more reference-copying answers (only 200 training examples). Phi-3's lower full ROUGE reflects richer, more elaborate answers — which is desirable for a medical assistant. ROUGE-1 @50tok (verbosity-corrected) shows Phi-3's true factual precision advantage.
+The ablation compares three conditions on the same metric suite (Kaggle T4, 50 samples each): zero-shot base Phi-3, QLoRA fine-tuned, and fine-tuned + RAG.
 
 ---
 
@@ -262,23 +256,3 @@ See [`requirements.txt`](requirements.txt) for the full list. Key packages:
 - Always consult a qualified healthcare professional for medical decisions
 
 ---
-
-## Citation
-
-If you use MEDIGUIDE in your research, please cite:
-
-```bibtex
-@misc{mediguide2026,
-  title   = {MEDIGUIDE: Domain-Adapted Medical QA with Phi-3 Mini QLoRA and RAG},
-  author  = {Raj, Shriyansh and Sharma, Manan},
-  year    = {2026},
-  url     = {https://github.com/mananms21/Mediguide-},
-  note    = {Model: https://huggingface.co/Shriyanshml/phi3-mini-qlora-mediguide}
-}
-```
-
----
-
-## License
-
-This project is released under the **MIT License**. The base model (Phi-3 Mini) is subject to [Microsoft's Research License](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct). The MedQuAD dataset is from the NIH National Library of Medicine.

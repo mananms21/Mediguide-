@@ -270,26 +270,12 @@ st.markdown("""
 
 # ── Model registry ────────────────────────────────────────────────
 MODELS = {
-    "Phi-3 Mini QLoRA (Recommended)": {
+    "Phi-3 Mini QLoRA": {
         "model_id":  "Shriyanshml/phi3-mini-qlora-mediguide",
         "base":      "microsoft/Phi-3-mini-4k-instruct",
         "type":      "phi3",
-        "desc":      "3.8B · QLoRA · 2,000 NIH MedQuAD samples · Clinical BERTScore 0.94",
+        "desc":      "3.8B · QLoRA · 2,000 NIH MedQuAD samples · Clinical BERTScore 0.974",
         "quantized": True,
-    },
-    "Falcon-7B QLoRA": {
-        "model_id":  "TestCase1/falcon-7b-qlora-chat-medical-bot",
-        "base":      "tiiuae/falcon-7b",
-        "type":      "falcon",
-        "desc":      "7B · QLoRA · earlier baseline",
-        "quantized": True,
-    },
-    "Falcon-7B LoRA": {
-        "model_id":  "TestCase1/falcon-7b-lora-chat-medical-bot",
-        "base":      "tiiuae/falcon-7b",
-        "type":      "falcon",
-        "desc":      "7B · LoRA BF16 · fastest inference",
-        "quantized": False,
     },
 }
 

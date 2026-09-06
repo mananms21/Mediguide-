@@ -30,51 +30,16 @@ import pandas as pd
 # ── Model registry ────────────────────────────────────────────────
 MODEL_REGISTRY = {
     "phi3": {
-        "name":          "Phi-3 Mini QLoRA 🆕",
+        "name":          "Phi-3 Mini QLoRA",
         "model_id":      "Shriyanshml/phi3-mini-qlora-mediguide",
         "base_model":    "microsoft/Phi-3-mini-4k-instruct",
         "method":        "QLoRA (4-bit NF4)",
         "type":          "phi3",
         "train_examples": 2000,
-        "adapter_size_mb": 18,
-    },
-    "falcon_qlora": {
-        "name":          "Falcon-7B QLoRA",
-        "model_id":      "TestCase1/falcon-7b-qlora-chat-medical-bot",
-        "base_model":    "tiiuae/falcon-7b",
-        "method":        "QLoRA (4-bit)",
-        "type":          "falcon_peft",
-        "train_examples": 200,
-        "adapter_size_mb": 18,
-    },
-    "falcon_lora": {
-        "name":          "Falcon-7B LoRA",
-        "model_id":      "TestCase1/falcon-7b-lora-chat-medical-bot",
-        "base_model":    "tiiuae/falcon-7b",
-        "method":        "LoRA (BF16)",
-        "type":          "falcon_peft",
-        "train_examples": 200,
-        "adapter_size_mb": 12,
-    },
-    "prompt_q": {
-        "name":          "Prompt Tuning (Quantized)",
-        "model_id":      "TestCase1/falcon-7b-prompt-chat-medical-bot",
-        "base_model":    "tiiuae/falcon-7b",
-        "method":        "Prompt Tuning (4-bit)",
-        "type":          "falcon_peft",
-        "train_examples": 200,
-        "adapter_size_mb": 0.43,
-    },
-    "prompt_fp": {
-        "name":          "Prompt Tuning (Full Precision)",
-        "model_id":      "TestCase1/falcon-7b-prompt-fp-chat-medical-bot",
-        "base_model":    "tiiuae/falcon-1b",
-        "method":        "Prompt Tuning (BF16)",
-        "type":          "falcon_peft",
-        "train_examples": 200,
-        "adapter_size_mb": 0.20,
+        "adapter_size_mb": 12.6,
     },
 }
+
 
 RESULTS_PATH = Path(__file__).parent / "results" / "results.json"
 EVAL_SAMPLES  = 50
